@@ -377,6 +377,7 @@ class OrderBuilder:
         doc.order = Order.build(
             doc.pdf_name, order_date, doc.pdffile_path, order_details
         )
+        doc.order.category = "Change of Portfolio"        
 
         errors = [e for e in errors if not DataError.ignore_error(e, ignore_dict)]
 

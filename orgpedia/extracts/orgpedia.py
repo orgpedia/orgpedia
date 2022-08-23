@@ -317,6 +317,9 @@ class OrderDetail(Region):
         return [self.officer] + self.get_posts()
 
 
+    
+
+
 class IncorrectOrderDateError(DataError):
     pass
 
@@ -355,6 +358,12 @@ class Order(Region):
     def get_posts(self):
         return [p for d in self.details for p in d.get_posts()]
 
+    def get_posts_page_idx(self, page_idx):
+        page_details = [d for d in self.details if d.page_idx == page_idx]
+        return [p for d in page_details for p in d.get_posts()]
+
+    def get_officers(self, page_idx):
+        return [d.officer for d in self.details if d.page_idx == page_idx]
 
 # If it is not extending Region should it still be there, yes as it will be moved to Orgpeida
 

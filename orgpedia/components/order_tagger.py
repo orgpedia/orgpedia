@@ -256,6 +256,7 @@ class OrderTagger:
 
         if mode == "build":
             doc.order = Order.build(doc.pdf_name, order_date, doc.pdffile_path, details)
+            doc.order.category = "Change of Portfolio"                    
         else:
             doc.order.date = order_date
 

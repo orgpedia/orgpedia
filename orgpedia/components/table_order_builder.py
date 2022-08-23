@@ -364,15 +364,18 @@ class TableOrderBuidler:
 
     def __call__(self, doc):
         def get_title_role(line):
-            line = line.replace(' ', '').strip().lower()
-            assert len(line) > 0
-            if 'cabin' in line or 'inet' in line or 'cablnet' in line:
+            line = line.replace(' ', '').replace('()', '').strip().lower()
+            if not line:
+                self.lgr.debug(f"{doc.pdf_name}: Line is empty ")
+                return 'Cabinet Minister'
+            elif 'cabin' in line or 'inet' in line or 'cablnet' in line:
                 return 'Cabinet Minister'
             elif 'depu' in line or 'uty' in line:
                 return 'Deputy Minister'
-            elif 'indep' in line or 'indefenlen' in line:
+            elif 'indep' in line or 'indefenlen' in line or 'indbpendentcharge' in line or 'ineenjentchage' in line or 'indefendentcharge' in line or 'indeeerdentcharge' in line:
                 return 'Minister of State (Independent Charge)'
             else:
+                self.lgr.debug(f"MINISTER OF STATE** {line}")                
                 return 'Minister of State'
 
         
@@ -415,7 +418,7 @@ class TableOrderBuidler:
         doc.order = Order.build(
             doc.pdf_name, order_date, doc.pdffile_path, order_details
         )
-        doc.order.category = "Council"
+        doc.order.category = "Council of Ministers"
 
         # self.write_fixes(doc, errors)
 
