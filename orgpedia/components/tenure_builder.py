@@ -59,8 +59,8 @@ class TenureMultipleRolesError(DataError):
             return f"{i.order_id}:{i.detail_idx}-{i.role}"
 
         path = f"order.details{info.detail_idx}"
-        roles = [i.role for i in [info] + info.later_infos if i.role]
-        role_str = "|".join(role_info(i) for i in [info] + info.later_infos)
+        roles = [i.role for i in info.all_infos if i.role]
+        role_str = "|".join(role_info(i) for i in info.all_infos)
         officer_str = f"Officer: {info.officer_id}"
         msg = f"Multiple roles {officer_str} {role_str}"
         return TenureMultipleRolesError(path=path, msg=msg, roles=roles)
@@ -87,7 +87,7 @@ class DetailInfo:
     post_id: str
     role: str
     order_category: str
-    later_infos: List = field(default_factory=[])
+    all_infos: List = field(default_factory=[])
 
     def __str__(self):
         return f"{self.order_id} {self.officer_id} {self.post_id}"
@@ -180,7 +180,7 @@ class TenureBuilder:
         def build_tenure(start_info, end_order_id, end_date, end_detail_idx):
             self.curr_tenure_idx += 1
 
-            roles = [start_info.role] + [i.role for i in start_info.later_infos]
+            roles = [start_info.role] + [i.role for i in start_info.all_infos]
             roles_counter = Counter(roles)
 
             if len(roles_counter) > 1:
@@ -189,6 +189,7 @@ class TenureBuilder:
                 errors.append(roleError)
 
             role = max(roles_counter, key=roles_counter.get, default='Cabinet Minister')
+            all_order_infos = [(i.order_id, i.detail_idx) for i in start_info.all_infos]
             return Tenure(
                 tenure_idx=self.curr_tenure_idx,
                 officer_id=start_info.officer_id,
@@ -200,6 +201,7 @@ class TenureBuilder:
                 end_order_id=end_order_id,
                 end_detail_idx=end_detail_idx,
                 role=role,
+                all_order_infos=all_order_infos,
             )
 
         def get_postids(infos):
@@ -221,7 +223,7 @@ class TenureBuilder:
             o_tenures = []
             active_posts = set(postid_info_dict.keys())
             self.lgr.info(f"\tActive{get_postids(active_posts)} Order{get_postids(order_infos)}")
-            if first.order_category == "Council":
+            if first.order_category == "Council of Ministers":
                 order_posts = set(i.post_id for i in order_infos)
                 ignored_posts = list(active_posts - order_posts)
                 if ignored_posts:
@@ -235,17 +237,19 @@ class TenureBuilder:
                 if info.verb in ("assumes", "continues"):
                     if info.post_id not in postid_info_dict:
                         postid_info_dict.setdefault(info.post_id, info)
+                        info.all_infos.append(info)
                         # if info.verb == "continues":
                         #     errors.append(TenureMissingAssumeError.build(info))
                     else:
-                        postid_info_dict[info.post_id].later_infos.append(info)
+                        postid_info_dict[info.post_id].all_infos.append(info)
                 elif info.verb == "relinquishes":
                     start_info = postid_info_dict.get(info.post_id, None)
                     if not start_info:
                         self.lgr.warning(f"***Missing Assume post_id: {info.post_id} not found in {str(info)}")
                         errors.append(TenureMissingAssumeError.build(info))
                         continue
-                    start_info.later_infos.append(info)
+                    start_info.all_infos.append(info)
+                    assert o_id == info.order_id and d_idx == info.detail_idx
                     o_tenures.append(build_tenure(start_info, o_id, o_date, d_idx))
                     self.lgr.info(f"\t\tClosing Active: {info.post_id} {o_id} {d_idx}")
                     del postid_info_dict[info.post_id]

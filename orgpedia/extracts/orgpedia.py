@@ -1,7 +1,7 @@
 import datetime
 import json
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Tuple
 
 from more_itertools import flatten
 from pydantic import BaseModel
@@ -384,6 +384,8 @@ class Tenure(BaseModel):
 
     role: str = None
     manager_idxs: List[int] = []
+    reportee_idxs: List[int] = []
+    all_order_infos: List[Tuple[str, int]] = []
 
     @property
     def duration(self):
