@@ -4,14 +4,13 @@ import sys
 from pathlib import Path
 
 from dateutil import parser
+from docint.data_error import DataError
+from docint.util import load_config, read_config_from_disk
+from docint.vision import Vision
 from enchant import request_pwl_dict
 from more_itertools import first
 
 from ..extracts.orgpedia import OfficerID, OfficerIDNotFoundError
-from docint.region import DataError
-from docint.util import read_config_from_disk
-from docint.vision import Vision
-from docint.util import load_config
 
 # b /Users/mukund/Software/docInt/docint/pipeline/id_assigner.py:34
 
@@ -154,8 +153,7 @@ class IDAssigner:
             if detail.detail_idx == 48:
                 print("Foudn It")
 
-            
-            officer = detail.officer            
+            officer = detail.officer
             if detail.detail_idx in conf_officer_ids:
                 officer.officer_id = conf_officer_ids[detail.detail_idx]
                 self.lgr.info(f'** Setting officer_id: {officer.officer_id} {officer.name}')
@@ -172,9 +170,7 @@ class IDAssigner:
 
             self.lgr.debug(detail.to_id_str())
 
-        self.lgr.info(
-            f"=={doc.pdf_name}.id_assigner {len(doc.order.details)} {DataError.error_counts(errors)}"
-        )
+        self.lgr.info(f"=={doc.pdf_name}.id_assigner {len(doc.order.details)} {DataError.error_counts(errors)}")
         [self.lgr.info(str(e)) for e in errors]
         self.remove_log_handler(doc)
         return doc

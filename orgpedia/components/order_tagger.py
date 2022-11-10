@@ -2,21 +2,15 @@ import logging
 import sys
 from pathlib import Path
 
-from more_itertools import first
-
-from ..extracts.orgpedia import (
-    IncorrectOrderDateError,
-    Officer,
-    Order,
-    OrderDateNotFoundErrror,
-    OrderDetail,
-    Post,
-)
 from docint.hierarchy import Hierarchy, MatchOptions
 from docint.span import SpanGroup
 from docint.util import find_date, load_config
 from docint.vision import Vision
 from docint.word_line import words_in_lines
+from more_itertools import first
+from docint.region import Region
+
+from ..extracts.orgpedia import IncorrectOrderDateError, Officer, Order, OrderDateNotFoundErrror, OrderDetail, Post
 
 
 @Vision.factory(
@@ -66,8 +60,12 @@ class OrderTagger:
         self.file_handler = None
 
     def get_order_date(self, doc):
-        order_date = doc.pages[0].layoutlm.get("ORDERDATEPLACE", [])
-        word_lines = words_in_lines(order_date, para_indent=False)
+        od_labels = doc.pages[0].word_labels.get("ORDERDATEPLACE", [])
+        
+        page_idxs = od_labels['page_idx_'] 
+        page_idx = page_idxs[0] if isinstance(page_idxs, list) else page_idxs
+        od_words = [doc[page_idx][w_idx] for w_idx in od_labels['word_idxs']]
+        word_lines = words_in_lines(Region.from_words(words=od_words), para_indent=False)
 
         result_dt, errors, date_text = None, [], ""
 
@@ -137,9 +135,7 @@ class OrderTagger:
         self.lgr.debug(f"dept: {Hierarchy.to_str(dept_sgs)}")
 
         b_post_text = SpanGroup.blank_text(dept_sgs, post_text)
-        role_sgs = self.hierarchy_dict["role"].find_match(
-            b_post_text, self.match_options
-        )
+        role_sgs = self.hierarchy_dict["role"].find_match(b_post_text, self.match_options)
         self.lgr.debug(f"role: {Hierarchy.to_str(role_sgs)}")
 
         assert len(dept_sgs) == 1 and len(role_sgs) in (0, 1)
@@ -256,7 +252,7 @@ class OrderTagger:
 
         if mode == "build":
             doc.order = Order.build(doc.pdf_name, order_date, doc.pdffile_path, details)
-            doc.order.category = "Change of Portfolio"                    
+            doc.order.category = "Change of Portfolio"
         else:
             doc.order.date = order_date
 

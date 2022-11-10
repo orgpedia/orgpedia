@@ -4,27 +4,23 @@ import sys
 import unicodedata
 from pathlib import Path
 
-from more_itertools import first
-from polyleven import levenshtein
-
-from ..extracts.orgpedia import Officer, Order, OrderDetail
-
 # from docint.region Region, UnmatchedTextsError
 from docint.span import Span
 
 # from docint.hierarchy import Hierarchy, MatchOptions
 from docint.util import find_date, load_config, read_config_from_disk
 from docint.vision import Vision
-from orgpedia.components.pdfpost_parser import PostParser
+from more_itertools import first
+from polyleven import levenshtein
 
 from orgpedia.components.hindi_order_builder import (
     BadCharsInNameError,
     IncorrectNameError,
     UntranslatableTextsInPostError,
 )
+from orgpedia.components.pdfpost_parser import PostParser
 
-# from docint.extracts.orgpedia import IncorrectOrderDateError, OrderDateNotFoundErrror
-
+from ..extracts.orgpedia import Officer, Order, OrderDetail
 
 PassthroughStr = ".,()-/123456789:"
 PasssthroughList = [
@@ -146,15 +142,9 @@ class HindiOrderTagger:
                 bad_msgs = []
                 for bad_char in bad:
                     bad_word = first([w for w in name_words if bad_char in w.text])
-                    bad_msgs.append(
-                        f"{bad_char}< >{bad_word.text}[{bad_word.word_idx}]"
-                    )
+                    bad_msgs.append(f"{bad_char}< >{bad_word.text}[{bad_word.word_idx}]")
                 msg = f'Has these bad chars: >{"< >".join(bad_msgs)}< in >{hi_name}<'
-                return [
-                    BadCharsInNameError(
-                        bad_chars=bad, hi_name=hi_name, path=path, msg=msg
-                    )
-                ]
+                return [BadCharsInNameError(bad_chars=bad, hi_name=hi_name, path=path, msg=msg)]
         return []
 
     def get_salut(self, name, merged_saluts=True):
@@ -206,11 +196,7 @@ class HindiOrderTagger:
             else:
                 msg = f"Missing >{name_word}< in >{hi_name}<"
                 print(f"= Officer Error: {msg} {path}")
-                errors.append(
-                    IncorrectNameError(
-                        path=path, msg=msg, sub_str=name_word, full_name=hi_name
-                    )
-                )
+                errors.append(IncorrectNameError(path=path, msg=msg, sub_str=name_word, full_name=hi_name))
                 return ""
 
         if path == "pa0.ta0.ro10.ce1":
@@ -275,8 +261,8 @@ class HindiOrderTagger:
             print("= Officer Name Errors")
             print("\n".join(str(e) for e in char_errors))
 
-        officer.errors = char_errors + name_errors + rel_errors
-        return officer, officer.errors
+        all_errors = char_errors + name_errors + rel_errors
+        return officer, all_errors
 
     def find_post_leven_match(self, hi_text, cutoff=1):
         if hi_text in self.post_leven_cache:
@@ -350,13 +336,9 @@ class HindiOrderTagger:
 
         post_str, untrans_texts = self.translate_post(hi_text)
         if untrans_texts:
-            print(
-                f"hi:>{hi_text}< en:>UntranslatableTextsInPostError< {path} {','.join(untrans_texts)}"
-            )
+            print(f"hi:>{hi_text}< en:>UntranslatableTextsInPostError< {path} {','.join(untrans_texts)}")
             msg = f'Untranslatable texts: >{"<, >".join(untrans_texts)}< >{hi_text}<'
-            trans_err = UntranslatableTextsInPostError(
-                msg=msg, path=path, texts=untrans_texts, post_text=hi_text
-            )
+            trans_err = UntranslatableTextsInPostError(msg=msg, path=path, texts=untrans_texts, post_text=hi_text)
             return None, [trans_err]
 
         print(f"hi:>{hi_text}< en:>{post_str}< {path}")
@@ -366,7 +348,7 @@ class HindiOrderTagger:
             print("= Post Error")
             print("\n".join(str(e) for e in post_errors))
 
-        post.errors = post_errors
+        #post.errors = post_errors
         return post, post_errors
 
     def build_detail(self, conf_detail, page):

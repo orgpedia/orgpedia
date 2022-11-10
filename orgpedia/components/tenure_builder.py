@@ -1,8 +1,8 @@
-from collections import Counter
 import datetime
 import json
 import logging
 import sys
+from collections import Counter
 from dataclasses import dataclass, field
 from itertools import groupby
 from operator import attrgetter
@@ -11,11 +11,9 @@ from typing import List
 
 import yaml
 from dateutil import parser
-from more_itertools import flatten
-
-
-from docint.region import DataError
+from docint.data_error import DataError
 from docint.vision import Vision
+from more_itertools import flatten
 
 from ..extracts.orgpedia import Tenure
 
@@ -140,6 +138,10 @@ class TenureBuilder:
                 for post in getattr(detail, verb):
                     yield verb, post
 
+        def get_duplicates(iter):
+            seen = set()
+            return set(i for i in iter if i in seen or seen.add(i))
+
         def build_info(detail, verb, post):
             role = post.role_hpath[-1] if post.role_hpath else None
             return DetailInfo(
@@ -160,7 +162,11 @@ class TenureBuilder:
         if not valid_date(order):
             return []
 
-        return [build_info(d, v, p) for d in order.details for (v, p) in iter_posts(d)]
+        # remove details with identical officer_ids
+        dup_o_ids = get_duplicates(d.officer.officer_id for d in order.details)
+        v_details = [d for d in order.details if d.officer.officer_id not in dup_o_ids]
+
+        return [build_info(d, v, p) for d in v_details for (v, p) in iter_posts(d)]
 
     def ministry_end_date(self, date):
         assert self.ministry_dict
@@ -176,7 +182,7 @@ class TenureBuilder:
                 return m["name"]
         return None
 
-    def build_officer_tenures(self, officer_id, detail_infos):
+    def build_officer_tenures(self, officer_id, detail_infos):  # noqa C901
         def build_tenure(start_info, end_order_id, end_date, end_detail_idx):
             self.curr_tenure_idx += 1
 
@@ -224,6 +230,7 @@ class TenureBuilder:
             active_posts = set(postid_info_dict.keys())
             self.lgr.info(f"\tActive{get_postids(active_posts)} Order{get_postids(order_infos)}")
             if first.order_category == "Council of Ministers":
+                ### TODO COUNCIL OF MINISTERS CAN HAVE RELINQUISHED POST AS WELL, THIS handles CONTINUES
                 order_posts = set(i.post_id for i in order_infos)
                 ignored_posts = list(active_posts - order_posts)
                 if ignored_posts:
@@ -249,7 +256,7 @@ class TenureBuilder:
                         errors.append(TenureMissingAssumeError.build(info))
                         continue
                     start_info.all_infos.append(info)
-                    assert o_id == info.order_id and d_idx == info.detail_idx
+                    assert o_id == info.order_id and d_idx == info.detail_idx, f'{o_id} == {info.order_id}, {d_idx} == {info.detail_idx}'
                     o_tenures.append(build_tenure(start_info, o_id, o_date, d_idx))
                     self.lgr.info(f"\t\tClosing Active: {info.post_id} {o_id} {d_idx}")
                     del postid_info_dict[info.post_id]
@@ -270,14 +277,16 @@ class TenureBuilder:
         postid_info_dict, officer_tenures, prev_ministry = {}, [], None
         for order_id, order_infos in groupby(detail_infos, key=attrgetter("order_id")):
             order_infos = list(order_infos)
-            curr_ministry = self.get_ministry(order_infos[0].order_date)
-            if prev_ministry and prev_ministry != curr_ministry:
-                self.lgr.info("\tNew ministry Clearing older posts.")
-                close_order_infos()
-
+            if self.ministry_dict:
+                curr_ministry = self.get_ministry(order_infos[0].order_date)
+                if prev_ministry and prev_ministry != curr_ministry:
+                    self.lgr.info("\tNew ministry Clearing older posts.")
+                    close_order_infos()
+                prev_ministry = curr_ministry
+                
             self.lgr.info(f"Order: {order_id} #detailpost_infos: {len(order_infos)}")
             officer_tenures += handle_order_infos(order_infos)
-            prev_ministry = curr_ministry
+
 
         if postid_info_dict:
             self.lgr.warning(f"***No Closing Orders{get_postids(postid_info_dict.keys())}")
@@ -310,6 +319,9 @@ class TenureBuilder:
             if not manager_ts:
                 errors.append(TenureWithNoManager.build(tenure))
             tenure.manager_idxs = [mt.tenure_idx for mt in manager_ts]
+
+            for manager_tenure in manager_ts:
+                manager_tenure.reportee_idxs.append(tenure.tenure_idx)
 
             self.lgr.debug(f"T: {str(tenure)} M: {'|'.join(str(t) for t in manager_ts)}")
         return errors

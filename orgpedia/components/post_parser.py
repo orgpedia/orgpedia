@@ -4,10 +4,14 @@ from pathlib import Path
 from textwrap import wrap
 from typing import List
 
-from ..extracts.orgpedia import Post
+from docint.data_error import DataError
 from docint.hierarchy import Hierarchy, MatchOptions
-from docint.region import DataError, Region, TextConfig
+from docint.para import TextConfig
+from docint.region import Region
 from docint.vision import Vision
+from docint.span import Span
+
+from ..extracts.orgpedia import Post
 
 
 class PostEmptyError(DataError):
@@ -29,11 +33,10 @@ class PostInfo(Region):
     assumes: List[Post] = []
     detail_idx: int  # TODO please remove this, this is not inc correctly
     is_valid: bool = True
+    errors: List[DataError] = []
 
     @classmethod
-    def build(
-        cls, words, word_lines, post_str, detail_idx, continues, relinquishes, assumes
-    ):
+    def build(cls, words, word_lines, post_str, detail_idx, continues, relinquishes, assumes):
         word_idxs = [w.word_idx for w in words]
         page_idx = words[0].page_idx if words else None
         word_lines_idxs = [[w.word_idx for w in wl] for wl in word_lines]
@@ -84,7 +87,7 @@ class PostInfo(Region):
             "role": "role.yml",
             "verb": "verb.yml",
         },
-        "ignore_labels": ["ignore"],
+        "ignore_labels": ["ignore", "puncts"],
         "conf_stub": "postparser",
     },
 )
@@ -92,7 +95,7 @@ class PostParserOnSentence:
     def __init__(self, doc_confdir, hierarchy_files, ignore_labels, conf_stub):
         self.doc_confdir = Path(doc_confdir)
         self.hierarchy_files = hierarchy_files
-        self.ignore_labels = ignore_labels
+        self.ignore_labels = ignore_labels + ['puncts']
         self.conf_stub = conf_stub
 
         self.hierarchy_dict = {}
@@ -138,9 +141,7 @@ class PostParserOnSentence:
             return errors
 
         for (verb, post_groups) in posts_groups_dict.items():
-            num_depts = len(
-                [p for p in post_groups if p.root.endswith("__department__")]
-            )
+            num_depts = len([p for p in post_groups if p.root.endswith("__department__")])
             num_roles = len([p for p in post_groups if p.root.endswith("__role__")])
 
             if num_roles > num_depts:
@@ -165,11 +166,7 @@ class PostParserOnSentence:
         posts_groups_dict["continues"] = new_continues
 
     def build_post_info(self, post_region, hier_span_groups, detail_idx):
-        field_span_groups = [
-            (field, span_group)
-            for (field, sgs) in hier_span_groups.items()
-            for span_group in sgs
-        ]
+        field_span_groups = [(field, span_group) for (field, sgs) in hier_span_groups.items() for span_group in sgs]
         field_span_groups.sort(key=lambda tup: tup[1].min_start)
 
         verb, dept_role_groups_dict = "continues", {}
@@ -177,9 +174,7 @@ class PostParserOnSentence:
             if hier_span_group.root == "verb":  # TODO move this to __verb__
                 verb = hier_span_group.leaf
                 verb_span = hier_span_group.spans[0]
-                post_region.add_span(
-                    verb_span.start, verb_span.end, "verb", self.text_config
-                )
+                post_region.add_label(verb_span, "verb", self.text_config)
             else:
                 dept_role_groups_dict.setdefault(verb, []).append(hier_span_group)
 
@@ -194,25 +189,13 @@ class PostParserOnSentence:
             for hier_span_group in hier_span_groups:
                 if hier_span_group.root == "__role__":
                     role_sg = hier_span_group
-                    [
-                        post_region.add_span(
-                            span.start, span.end, "role", self.text_config
-                        )
-                        for span in hier_span_group
-                    ]
+                    [post_region.add_label(span, "role", self.text_config) for span in hier_span_group]
                 else:
                     dept_sg = hier_span_group
-                    [
-                        post_region.add_span(
-                            span.start, span.end, "dept", self.text_config
-                        )
-                        for span in hier_span_group
-                    ]
+                    [post_region.add_label(span, "dept", self.text_config, suppress_warning=True) for span in hier_span_group]
                     spans += [span for span in hier_span_group]
             post_words = post_region.get_words_in_spans(spans)
-            posts_dict[post_type].append(
-                Post.build(post_words, post_region_str, dept_sg, role_sg)
-            )
+            posts_dict[post_type].append(Post.build(post_words, post_region_str, dept_sg, role_sg))
 
         post_info = PostInfo.build(
             post_region.words,
@@ -230,9 +213,7 @@ class PostParserOnSentence:
         log_texts = wrap(post_region_str, width=90)
         idx_texts, start_idx = [], 0
         for t in log_texts:
-            idx_texts.append(
-                idx_region_str[start_idx : start_idx + len(t)]  # noqa: E203
-            )
+            idx_texts.append(idx_region_str[start_idx : start_idx + len(t)])  # noqa: E203
             start_idx += len(t) + 1
 
         # err_str = post_info.error_counts_str
@@ -244,24 +225,20 @@ class PostParserOnSentence:
         def build_post(post_fields_dict, post_spans):
             dept_sg = post_fields_dict.get("department", None)
             role_sg = post_fields_dict.get("role", None)
-            post_words = post_region.get_words_in_spans_with_config(post_spans, self.text_config)
+            post_words = post_region.get_words_for_spans(post_spans, self.text_config)
             return Post.build(post_words, post_region_str, dept_sg, role_sg)
 
-        field_span_groups = [
-            (field, span_group)
-            for (field, sgs) in hier_span_groups.items()
-            for span_group in sgs
-        ]
+        field_span_groups = [(field, span_group) for (field, sgs) in hier_span_groups.items() for span_group in sgs]
         field_span_groups.sort(key=lambda tup: tup[1].min_start)
 
+        field_spans = {}
         verb, dept_role_groups_dict = "continues", {}
         for field, hier_span_group in field_span_groups:
             if hier_span_group.root == "verb":  # TODO move this to __verb__
                 verb = hier_span_group.leaf
                 verb_span = hier_span_group.spans[0]
-                post_region.add_span(
-                    verb_span.start, verb_span.end, "verb", self.text_config
-                )
+                #post_region.add_label(verb_span, "verb", self.text_config) CHANGED
+                field_spans.setdefault("verb", []).append(verb_span)
             else:
                 dept_role_groups_dict.setdefault(verb, []).append(hier_span_group)
 
@@ -280,11 +257,13 @@ class PostParserOnSentence:
                     post_field_dict, post_spans = {}, []
                 post_field_dict[field] = hier_span_group
                 post_spans += [span for span in hier_span_group]
-                [
-                    post_region.add_span(s.start, s.end, field, self.text_config)
-                    for s in hier_span_group
-                ]
+                #[post_region.add_label(Span(start=s.start, end=s.end), field, self.text_config) for s in hier_span_group]
+                field_spans.setdefault(field, []).extend(hier_span_group)
+                
             posts_dict[verb].append(build_post(post_field_dict, post_spans))
+
+        for field, spans in field_spans.items():
+            post_region.add_label(spans, field, self.text_config)
 
         post_info = PostInfo.build(
             post_region.words,
@@ -303,9 +282,7 @@ class PostParserOnSentence:
         log_texts = wrap(post_region_str, width=90)
         idx_texts, start_idx = [], 0
         for t in log_texts:
-            idx_texts.append(
-                idx_region_str[start_idx : start_idx + len(t)]  # noqa: E203
-            )
+            idx_texts.append(idx_region_str[start_idx : start_idx + len(t)])  # noqa: E203
             start_idx += len(t) + 1
 
         # err_str = post_info.error_counts_str
@@ -337,7 +314,6 @@ class PostParserOnSentence:
             list_items = getattr(page, "list_items", [])
 
             for postinfo_idx, list_item in enumerate(list_items):
-
                 # TODO Should we remove excess space and normalize it ? worthwhile...
                 post_str = list_item.line_text(self.text_config)
                 self.lgr.debug(f"{post_str}\nSpans:\n----------")
@@ -347,4 +323,3 @@ class PostParserOnSentence:
 
         self.remove_log_handler(doc)
         return doc
-

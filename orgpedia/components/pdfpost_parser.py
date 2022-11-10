@@ -4,14 +4,15 @@ import sys
 from pathlib import Path
 from typing import List
 
-from more_itertools import first
-
-from ..extracts.orgpedia import Post
+from docint.data_error import DataError
 from docint.hierarchy import Hierarchy, HierarchySpanGroup, MatchOptions
-from docint.region import DataError, TextConfig
+from docint.para import TextConfig
 from docint.span import Span
 from docint.util import read_config_from_disk
 from docint.vision import Vision
+from more_itertools import first
+
+from ..extracts.orgpedia import Post
 
 
 class PostEmptyDeptAndJuriError(DataError):
@@ -43,9 +44,7 @@ class PostUnmatchedTextsError(DataError):
     },
 )
 class PostParser:
-    def __init__(
-        self, doc_confdir, hierarchy_files, noparse_file, ignore_labels, conf_stub
-    ):
+    def __init__(self, doc_confdir, hierarchy_files, noparse_file, ignore_labels, conf_stub):
         print(noparse_file)
         self.doc_confdir = Path(doc_confdir)
         self.hierarchy_files = hierarchy_files
@@ -85,9 +84,7 @@ class PostParser:
         self.file_handler = None
 
     def _enable_hierarchy_logger(self):
-        logging.getLogger("docint.hierarchy").addHandler(
-            logging.StreamHandler(sys.stdout)
-        )
+        logging.getLogger("docint.hierarchy").addHandler(logging.StreamHandler(sys.stdout))
         logging.getLogger("docint.hierarchy").setLevel(logging.DEBUG)
 
     def _disable_hierarchy_logger(self):
@@ -109,9 +106,7 @@ class PostParser:
 
         def get_commisionerate(post_str):
             post_str = post_str.lower()
-            assert (
-                "jaipur" in post_str or "jodhpur" in post_str
-            ), f"No commissionerate in {post_str}"
+            assert "jaipur" in post_str or "jodhpur" in post_str, f"No commissionerate in {post_str}"
             comm_city = "jaipur" if "jaipur" in post_str else "jodhpur"
             comm_name = f"{comm_city} commissionerate"
             return self.hierarchy_dict["juri"].find_match(comm_name, self.match_options)
@@ -154,9 +149,7 @@ class PostParser:
                 if len(sel_sgs) > 1:
                     print(f"## {post_str} {len(sel_sgs)}")
                     for sg in sel_sgs:
-                        print(
-                            f"\t{sg.new_str()} {sg.sum_match_len} {sg.sum_span_len} {sg.sum_span_len_start}"
-                        )
+                        print(f"\t{sg.new_str()} {sg.sum_match_len} {sg.sum_span_len} {sg.sum_span_len_start}")
 
             self.lgr.debug(f"\tJuri: is_comm_role: {Hierarchy.to_str(sel_sgs)}")
             return sel_sgs
@@ -203,9 +196,7 @@ class PostParser:
                     sel_sgs = sel_sgs[:1]
 
             self.lgr.debug(f"\tJuri: sum_matching_len: {Hierarchy.to_str(sel_sgs)}")
-            assert (
-                len(sel_sgs) <= 1
-            ), f"{len(sel_sgs)}  span_groups found, {post_str} {Hierarchy.to_str(sel_sgs)}"
+            assert len(sel_sgs) <= 1, f"{len(sel_sgs)}  span_groups found, {post_str} {Hierarchy.to_str(sel_sgs)}"
             return sel_sgs
 
     def test(self, post, post_path):
@@ -242,9 +233,7 @@ class PostParser:
         u_texts = [t for t in u_texts if t.isalnum()]
         if u_texts:
             msg = f'unmatched texts: >{"<, >".join(u_texts)}< >{post.post_str}<'
-            errors.append(
-                PostUnmatchedTextsError(msg=msg, path=post_path, texts=u_texts)
-            )
+            errors.append(PostUnmatchedTextsError(msg=msg, path=post_path, texts=u_texts))
         return errors
 
     def parse(self, post_words, post_str, post_path, rank=None):
@@ -290,9 +279,7 @@ class PostParser:
                 and not span_groups  # noqa: W503
                 and post_str.lower().startswith("circle")  # noqa: W503
             ):
-                field_dict["role"] = hierarchy.find_match(
-                    "CIRCLE OFFICER", match_options
-                )
+                field_dict["role"] = hierarchy.find_match("CIRCLE OFFICER", match_options)
 
             if field == "role" and not span_groups and rank is not None:
                 field_dict["role"] = hierarchy.find_match(rank, match_options)
@@ -304,9 +291,7 @@ class PostParser:
                 field_dict["juri"] = sgs
 
             h_paths = [sg.hierarchy_path for sg in field_dict[field]]
-            self.lgr.info(
-                f"{field}: {Hierarchy.to_str(field_dict[field])} {h_paths[:1]}"
-            )
+            self.lgr.info(f"{field}: {Hierarchy.to_str(field_dict[field])} {h_paths[:1]}")
 
         field_dict = dict((k, first(v, None)) for k, v in field_dict.items())
 
@@ -369,8 +354,11 @@ class PostParser:
 
                 post = self.parse(post_words, post_str, post_path, rank)
                 page.posts.append(post)
-                post.errors = self.test(post, post_path)
-                errors.extend(post.errors)
+                post_errors = self.test(post, post_path)
+                if post_errors:
+                    post.has_issues = True
+                    
+                errors.extend(post_errors)
             total_posts += len(page.posts)
 
         self.lgr.info(f"==Total:{total_posts} {DataError.error_counts(errors)}")

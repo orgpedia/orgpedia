@@ -7,6 +7,16 @@ from itertools import chain
 from pathlib import Path
 from string import punctuation
 
+from docint.data_error import DataError, UnmatchedTextsError
+from docint.hierarchy import Hierarchy, MatchOptions
+from docint.para import TextConfig
+from docint.vocab import Vocab
+from docint.span import Span, SpanGroup
+from docint.table import TableEmptyBodyCellError, TableMismatchColsError
+from docint.util import find_date, load_config, read_config_from_disk
+from docint.vision import Vision
+from docint.word_line import words_in_lines
+from docint.region import Region
 from enchant import request_pwl_dict
 from more_itertools import first
 
@@ -20,13 +30,6 @@ from ..extracts.orgpedia import (
     OrderDetail,
     Post,
 )
-from docint.hierarchy import Hierarchy, MatchOptions
-from docint.region import DataError, TextConfig, UnmatchedTextsError
-from docint.span import Span, SpanGroup
-from docint.table import TableEmptyBodyCellError, TableMismatchColsError
-from docint.util import find_date, load_config, read_config_from_disk
-from docint.vision import Vision
-from docint.word_line import words_in_lines
 
 
 @Vision.factory(
@@ -40,15 +43,17 @@ from docint.word_line import words_in_lines
         },
         "dict_file": "output/pwl_words.txt",
         "unicode_file": "conf/unicode.yml",
+        "verb_pages": {},
     },
 )
 class TableOrderBuidler:
-    def __init__(self, conf_dir, conf_stub, hierarchy_files, dict_file, unicode_file):
+    def __init__(self, conf_dir, conf_stub, hierarchy_files, dict_file, unicode_file, verb_pages):
         self.conf_dir = Path(conf_dir)
         self.conf_stub = conf_stub
         self.hierarchy_files = hierarchy_files
         self.dict_file = Path(dict_file)
         self.unicode_file = Path(unicode_file)
+        self.verb_pages = {}
 
         self.hierarchy_dict = {}
         for field, file_name in self.hierarchy_files.items():
@@ -58,9 +63,7 @@ class TableOrderBuidler:
         self.match_options = MatchOptions(ignore_case=True)
 
         yml = read_config_from_disk(self.unicode_file)
-        self.unicode_dict = dict(
-            (u, a if a != "<ignore>" else "") for u, a in yml.items()
-        )
+        self.unicode_dict = dict((u, a if a != "<ignore>" else "") for u, a in yml.items())
 
         self.ignore_paren_strs = [
             "harg",
@@ -80,7 +83,9 @@ class TableOrderBuidler:
         # ADDING DEPARTMENTS
         i = "of-the-and-to-hold-temporary-charge-in-also-not-any-additional-incharge-with-departments-for"
         self.ignore_unmatched = set(i.split("-"))
-        self.dictionary = request_pwl_dict(str(self.dict_file))
+
+        self.vocab = Vocab(self.dict_file.read_text().split('\n'))
+        #self.dictionary = request_pwl_dict(str(self.dict_file))
 
         self.unmatched_ctr = Counter()
         self.punct_tbl = str.maketrans(punctuation, " " * len(punctuation))
@@ -127,12 +132,31 @@ class TableOrderBuidler:
         return result
 
     def get_officer(self, officer_cell, path):
+        def make_ascii(officer_cell, unicode_dict):
+            assert not officer_cell.label_spans
+            not_found = []
+            for text, word in officer_cell.iter_word_text():
+                if not word.text.isascii():
+                    u_text = word.text
+                    if u_text in unicode_dict:
+                        a_text = unicode_dict[u_text]
+                        # self.lgr.debug(f'UnicodeFixed: {u_text}->{a_text}')
+                        assert a_text is not None, f"incorrect text >{u_text}<"
+                        officer_cell.replace_word_text(word, "<all>", a_text)
+                    else:
+                        sys.stderr.write(f"Unicode: >{u_text}<\n")
+                        not_found.append(word.text)
+                        pass
+                    # self.lgr.info(f'unicode text not found: {u_text}\n')
+            return not_found
+            
+        
         errors = []
         if not officer_cell:
             msg = "empty cell"
             errors.append(TableEmptyBodyCellError(path=path, msg=msg, is_none=True))
 
-        missing_unicodes = officer_cell.make_ascii(self.unicode_dict)
+        missing_unicodes = make_ascii(officer_cell, self.unicode_dict)
         self.add_missing_unicodes(missing_unicodes)  # save the missing unicodes
 
         officer_text = officer_cell.line_text()
@@ -145,7 +169,7 @@ class TableOrderBuidler:
         englist_texts = []
         for text in officer_text.split():
             text = text.strip("()")
-            if text and self.dictionary.check(text):
+            if text and self.vocab.has_text(text):
                 if text.isupper():
                     officer_text = officer_text.replace(text, "")
                 else:
@@ -203,36 +227,50 @@ class TableOrderBuidler:
         return allcaps_spans
 
     def get_posts(self, post_cell, path, ignore_dict, table_role):
+        def make_ascii(officer_cell, unicode_dict):
+            assert not officer_cell.label_spans
+            not_found = []
+            for text, word in officer_cell.iter_word_text():
+                if not word.text.isascii():
+                    u_text = word.text
+                    if u_text in unicode_dict:
+                        a_text = unicode_dict[u_text]
+                        # self.lgr.debug(f'UnicodeFixed: {u_text}->{a_text}')
+                        assert a_text is not None, f"incorrect text >{u_text}<"
+                        officer_cell.replace_word_text(word, "<all>", a_text)
+                    else:
+                        sys.stderr.write(f"Unicode: >{u_text}<\n")
+                        not_found.append(word.text)
+                        pass
+                    # self.lgr.info(f'unicode text not found: {u_text}\n')
+            return not_found
+        
         posts, errors = [], []
         if not post_cell:
             msg = "empty cell"
             errors.append(TableEmptyBodyCellError(path=path, msg=msg, is_none=True))
 
-        missing_unicodes = post_cell.make_ascii(self.unicode_dict)
+        missing_unicodes = make_ascii(post_cell, self.unicode_dict)
         self.add_missing_unicodes(missing_unicodes)  # save the missing unicodes
 
         ignore_config = TextConfig(rm_labels=["ignore"])
         post_str = post_cell.line_text(ignore_config)
 
+        print(post_str)        
         paren_spans = self.get_paren_spans(post_str)
-        [
-            post_cell.add_span(s.start, s.end, "ignore", ignore_config)
-            for s in paren_spans
-        ]
+        print(paren_spans)
+        post_cell.add_label(paren_spans, "ignore", ignore_config)
 
         post_str = post_cell.line_text(ignore_config)
         allcaps_spans = self.get_allcaps_spans(post_str)
-        [
-            post_cell.add_span(s.start, s.end, "ignore", ignore_config)
-            for s in allcaps_spans
-        ]
+        post_cell.add_label(allcaps_spans, "ignore", ignore_config)
         if allcaps_spans:
             print(f"Removed ALL Caps Before >{post_str}<")
             print(f"Removed After  >{post_cell.line_text(ignore_config)}")
 
-        post_cell.merge_words(self.dictionary, ignore_config)
-        post_cell.correct_words(self.dictionary, ignore_config)
-        post_cell.mark_regex([r"[.,;\']", "in the"], "ignore", ignore_config)
+        post_cell.merge_words(self.vocab, ignore_config)
+        post_cell.correct_words(self.vocab, ignore_config)
+        post_cell.label_regex([r"[.,;\']", "in the"], "ignore", ignore_config)
 
         post_str, hier_span_groups = post_cell.line_text(ignore_config), []
         # replacing double space
@@ -243,10 +281,8 @@ class TableOrderBuidler:
         self.lgr.debug(f"dept: {Hierarchy.to_str(dept_sgs)}")
 
         b_post_str = SpanGroup.blank_text(dept_sgs, post_str)
-        role_sgs = self.hierarchy_dict["role"].find_match(
-            b_post_str, self.match_options
-        )
-        
+        role_sgs = self.hierarchy_dict["role"].find_match(b_post_str, self.match_options)
+
         self.lgr.debug(f"role: {Hierarchy.to_str(role_sgs)}")
 
         hier_span_groups = dept_sgs + role_sgs
@@ -263,7 +299,7 @@ class TableOrderBuidler:
                     role_sg = table_role_sgs[0]
                 elif role_sg.leaf != table_role_sgs[0].leaf and 'Prime Minister' not in role_sg.leaf:
                     print(f'*MISMATCH {post_str} table: {table_role_sgs[0].leaf} role: {role_sg.leaf}')
-                    
+
                 posts.append(Post.build(post_cell.words, post_str, dept_sg, role_sg))
             else:
                 role_sg = span_group
@@ -279,6 +315,7 @@ class TableOrderBuidler:
         u_texts = [t for t in u_texts if not t.isdigit()]
 
         if u_texts and path not in ignore_dict.get("UnmatchedTextsError", []):
+            print(path, u_texts, ignore_dict.get("UnmatchedTextsError", []))
             self.unmatched_ctr.update(u_texts)
             post_idx_str = ' '.join(f'{w.word_idx}:{w.text}' for w in post_cell.words)
             errors.append(UnmatchedTextsError.build(path, u_texts, post_idx_str))
@@ -304,55 +341,78 @@ class TableOrderBuidler:
             officer,
             detail_idx,
             continues=c,
-            relinquishes=[],
+            relinquishes=r,
             assumes=[],
         )
-        d.errors = officer_errors + post_errors
+        all_errors = officer_errors + post_errors        
         print("--------")
         print(d.to_str())
+        if all_errors:
+            print("Errors:")
+            print(f"  {[str(e) for e in all_errors]}")
 
         self.lgr.debug("--------")
         self.lgr.debug(d.to_str())
 
-        all_errors = officer_errors + post_errors
+
         return d, all_errors
 
     def get_order_date(self, doc):
-        result_dt, errors, date_text = None, [], ""
-        if not getattr(doc.pages[0], "layoutlm", None):
-            path = "pa0.layoutlm"
-            msg = "layoutlm not found !"
+        od_labels = doc.pages[0].word_labels.get("ORDERDATEPLACE", {})
+        # import pdb
+        # pdb.set_trace()
+        
+        if not od_labels:
+            errors = []
+            path = "pa0.word_labels.ORDERDATEPLACE"
+            msg = f"{doc.pdf_name} text: EMPTY"
             errors.append(OrderDateNotFoundErrror(path=path, msg=msg))
             return None, errors
+            
+        
+        page_idxs = od_labels['page_idx_'] 
+        page_idx = page_idxs[0] if isinstance(page_idxs, list) else page_idxs
+        od_words = [doc[page_idx][w_idx] for w_idx in od_labels['word_idxs']]
+        word_lines = words_in_lines(Region.from_words(words=od_words), para_indent=False)
 
-        order_date = doc.pages[0].layoutlm.get("ORDERDATEPLACE", [])
-        word_lines = words_in_lines(order_date, para_indent=False)
+        result_dt, errors, date_text = None, [], ""
 
+        err_details = []
         for word_line in word_lines:
-            date_line = " ".join(w.text for w in word_line)
-            print(f"DL: {date_line}")
+            date_line = " ".join(f"{w.text}" for w in word_line)
+            err_line = " ".join(f"{w.word_idx}->{w.text}" for w in word_line)
+            err_details.append(f"DL: {doc.pdf_name} {date_line} {err_line}")
             if len(date_line) < 10:
-                date_text += " ".join(f"{w.word_idx}:{w.text}" for w in word_line)
+                date_text += date_line + "\n"
                 continue
 
             dt, err_msg = find_date(date_line)
             if dt and (not err_msg):
                 result_dt = dt
-                date_text += " ".join(f"{w.word_idx}:{w.text}" for w in word_line)
+                date_text = date_line  # overwrite it
                 break
-            date_text += " ".join(f"{w.word_idx}:{w.text}" for w in word_line)
+            date_text += date_line + "\n"
 
-        if result_dt and (result_dt.year < 1947 or result_dt.year > 2021):
-            path = "pa0.layoutlm.ORDERDATEPLACE"
-            msg = f"Incorrect date: {result_dt} in {date_text}"
+        if not result_dt and date_text:
+            dt, err_msg = find_date(date_text)
+            if dt and (not err_msg):
+                result_dt = dt            
+
+        if result_dt and (result_dt.year < 1947 or result_dt.year > 2022):
+            path = "pa0.word_labels.ORDERDATEPLACE"
+            msg = f"{doc.pdf_name} Incorrect date: {result_dt} in {date_text}"
             errors.append(IncorrectOrderDateError(path=path, msg=msg))
         elif result_dt is None:
-            path = "pa0.layoutlm.ORDERDATEPLACE"
-            msg = f"text: >{date_text}<"
+            path = "pa0.word_labels.ORDERDATEPLACE"
+            msg = f"{doc.pdf_name} text: >{date_text}<"
             errors.append(OrderDateNotFoundErrror(path=path, msg=msg))
+
+        if errors:
+            print("\n".join(err_details))
 
         print(f"Order Date: {result_dt}")
         return result_dt, errors
+        
 
     def iter_rows(self, doc):
         detail_idx = 0
@@ -361,6 +421,21 @@ class TableOrderBuidler:
                 for (row_idx, row) in enumerate(table.body_rows):
                     yield page_idx, table_idx, row_idx, row, detail_idx
                     detail_idx += 1
+
+    def get_verb(self, doc, page_idx):
+        def has_word(query, page):
+            return any(w for w in page.words if query in w.text)
+
+        if self.verb_pages:
+            vps = self.verb_pages.items()
+            page_verb = first((v for v, p_idxs in vps if page_idx in p_idxs), 'continues')
+            return page_verb
+        else:
+            if len(doc.pages) > 1 and has_word('relinquish', doc.pages[0]):
+                print('*** FOUND RELINQUISHED ***')
+                return 'relinquished'
+            else:
+                return 'continues'
 
     def __call__(self, doc):
         def get_title_role(line):
@@ -372,23 +447,35 @@ class TableOrderBuidler:
                 return 'Cabinet Minister'
             elif 'depu' in line or 'uty' in line:
                 return 'Deputy Minister'
-            elif 'indep' in line or 'indefenlen' in line or 'indbpendentcharge' in line or 'ineenjentchage' in line or 'indefendentcharge' in line or 'indeeerdentcharge' in line:
+            elif (
+                'indep' in line
+                or 'indefenlen' in line
+                or 'indbpendentcharge' in line
+                or 'ineenjentchage' in line
+                or 'indefendentcharge' in line
+                or 'indeeerdentcharge' in line
+            ):
                 return 'Minister of State (Independent Charge)'
             else:
-                self.lgr.debug(f"MINISTER OF STATE** {line}")                
+                self.lgr.debug(f"MINISTER OF STATE** {line}")
                 return 'Minister of State'
 
-        
         self.add_log_handler(doc)
         self.lgr.info(f"table_order_builder: {doc.pdf_name}")
 
         doc.add_extra_field("order", ("obj", "orgpedia.extracts.orgpedia", "Order"))
 
         doc_config = load_config(self.conf_dir, doc.pdf_name, self.conf_stub)
+
+        old_verb_pages = self.verb_pages
+        self.verb_pages = doc_config.get("verb_pages", {})
+
         edits = doc_config.get("edits", [])
         if edits:
             print(f"Edited document: {doc.pdf_name}")
             doc.edit(edits)
+            
+            
 
         ignore_dict = doc_config.get("ignores", {})
         if ignore_dict:
@@ -398,35 +485,39 @@ class TableOrderBuidler:
         order_date, date_errors = self.get_order_date(doc)
         errors.extend(date_errors)
 
-        self.verb = "continues"  # self.get_verb(doc)
         table_role = 'Cabinet Minister'
+
         for page_idx, table_idx, row_idx, row, detail_idx in self.iter_rows(doc):
+            doc_verb = self.get_verb(doc, page_idx)
             table_title = doc.pages[page_idx].tables[table_idx].title
             if table_title:
-                old_table_role = table_role
                 table_title = table_title.raw_text().strip()
                 table_role = get_title_role(table_title)
-            
+
             path = f"pa{page_idx}.ta{table_idx}.ro{row_idx}"
             detail, d_errors = self.build_detail(
-                row, path, "continues", detail_idx, ignore_dict, table_role,
+                row,
+                path,
+                doc_verb,
+                detail_idx,
+                ignore_dict,
+                table_role,
             )
-            detail.errors = d_errors
+            #detail.errors = d_errors
             order_details.append(detail)
             errors.extend(d_errors)
 
-        doc.order = Order.build(
-            doc.pdf_name, order_date, doc.pdffile_path, order_details
-        )
+        doc.order = Order.build(doc.pdf_name, order_date, doc.pdffile_path, order_details)
         doc.order.category = "Council of Ministers"
 
         # self.write_fixes(doc, errors)
 
-        self.lgr.info(
-            f"=={doc.pdf_name}.table_order_builder {len(doc.order.details)} {DataError.error_counts(errors)}"
-        )
+        errors = [e for e in errors if not DataError.ignore_error(e, ignore_dict)]        
+
+        self.lgr.info(f"=={doc.pdf_name}.table_order_builder {len(doc.order.details)} {DataError.error_counts(errors)}")
         [self.lgr.info(str(e)) for e in errors]
 
+        self.verb_pages = old_verb_pages
         self.remove_log_handler(doc)
         return doc
 
@@ -441,12 +532,7 @@ class TableOrderBuidler:
             cell_unmat_str = ", ".join(u_error.texts)
 
             page_idx = cell.page.page_idx
-            unmatched_idxs = [
-                w.word_idx
-                for t in u_error.texts
-                for w in cell.words
-                if t.lower() in w.text.lower()
-            ]
+            unmatched_idxs = [w.word_idx for t in u_error.texts for w in cell.words if t.lower() in w.text.lower()]
             unmatched_paths = [f"pa{page_idx}.wo{idx}" for idx in unmatched_idxs]
             row = [
                 u_error.path,

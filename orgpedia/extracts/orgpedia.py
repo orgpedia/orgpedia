@@ -1,12 +1,13 @@
 import datetime
 import json
 from pathlib import Path
-from typing import Dict, List, Union, Tuple
+from typing import Dict, List, Tuple, Union
 
+from docint.data_error import DataError
+from docint.region import Region
+from docint.span import Span
 from more_itertools import flatten
 from pydantic import BaseModel
-
-from docint.region import DataError, Region, Span
 
 
 class IncorrectOfficerNameError(DataError):
@@ -77,6 +78,8 @@ class Post(Region):
     post_id: str = ""
     post_idx: int = -1
 
+    has_issues: bool = False
+
     @property
     def dept(self):
         return self.dept_hpath[-1] if self.dept_hpath else None
@@ -99,13 +102,7 @@ class Post(Region):
 
     @property
     def spans(self):
-        return (
-            self.dept_spans
-            + self.role_spans
-            + self.juri_spans
-            + self.loca_spans
-            + self.stat_spans
-        )
+        return self.dept_spans + self.role_spans + self.juri_spans + self.loca_spans + self.stat_spans
 
     @property
     def spans_dict(self):
@@ -123,7 +120,7 @@ class Post(Region):
         return ["dept", "role", "juri", "loca", "stat"]
 
     def has_error(self):
-        return True if self.errors else False
+        return self.has_issues
 
     def __str__(self):
         def p_s(hpath):
@@ -156,17 +153,12 @@ class Post(Region):
         p = post_str
         posts_to_strs = []
         for post in posts:
-            strs = [
-                f"{f[0].upper()}:{Span.to_str(p, s)}<"
-                for (f, s) in post.spans_dict.items()
-            ]
+            strs = [f"{f[0].upper()}:{Span.to_str(p, s)}<" for (f, s) in post.spans_dict.items()]
             posts_to_strs.append(" ".join(strs))
         return "-".join(posts_to_strs)
 
     @classmethod
-    def build(
-        cls, words, post_str, dept=None, role=None, juri=None, loca=None, stat=None
-    ):
+    def build(cls, words, post_str, dept=None, role=None, juri=None, loca=None, stat=None):
         def build_spans(label, spans):
             return [Span(start=span.start, end=span.end, label=label) for span in spans]
 
@@ -205,9 +197,7 @@ class Post(Region):
         )
 
     @classmethod
-    def build_no_spans(
-        cls, words, post_str, dept=[], role=[], juri=[], loca=[], stat=[]
-    ):
+    def build_no_spans(cls, words, post_str, dept=[], role=[], juri=[], loca=[], stat=[]):
         word_idxs = [w.word_idx for w in words]
         page_idx = words[0].page_idx if words else None
 
@@ -283,16 +273,14 @@ class OrderDetail(Region):
                 d_lines.append(f"{verb}:")
                 d_lines.extend([f'{p.to_str2("  ")}' for p in posts])
         # end
-        if self.errors:
-            d_lines += ["Errors:"]
-            d_lines += [f"  {str(e)}" for e in self.errors]
+        # if self.errors:
+        #     d_lines += ["Errors:"]
+        #     d_lines += [f"  {str(e)}" for e in self.errors]
         return "\n".join(d_lines)
 
     def to_id_str(self):
         o_id = self.officer.officer_id if self.officer else ""
-        d_lines = [
-            f"[{self.detail_idx}] O: {self.officer.salut}|{self.officer.name} > {o_id}"
-        ]
+        d_lines = [f"[{self.detail_idx}] O: {self.officer.salut}|{self.officer.name} > {o_id}"]
         for verb in ["continues", "relinquishes", "assumes"]:
             posts = getattr(self, verb)
             if posts:
@@ -317,9 +305,6 @@ class OrderDetail(Region):
         return [self.officer] + self.get_posts()
 
 
-    
-
-
 class IncorrectOrderDateError(DataError):
     pass
 
@@ -338,9 +323,7 @@ class Order(Region):
     category: str = ""
 
     def get_regions(self):
-        return (
-            [self] + self.details + list(flatten(d.get_regions() for d in self.details))
-        )
+        return [self] + self.details + list(flatten(d.get_regions() for d in self.details))
 
     @classmethod
     def build(cls, order_id, order_date, path, details):
@@ -364,6 +347,7 @@ class Order(Region):
 
     def get_officers(self, page_idx):
         return [d.officer for d in self.details if d.page_idx == page_idx]
+
 
 # If it is not extending Region should it still be there, yes as it will be moved to Orgpeida
 
@@ -402,7 +386,7 @@ class Tenure(BaseModel):
         return end_order.details[self.end_detail_idx].page_idx
 
     def __str__(self):
-        s =  f'O: {self.officer_id} '
+        s = f'O: {self.officer_id} '
         s += f'{self.start_order_id}:{self.start_detail_idx} <-> '
         s += f'{self.end_order_id}:{self.end_detail_idx}'
         s += f' D: {self.duration_days}'
@@ -412,7 +396,6 @@ class Tenure(BaseModel):
         min_end = min(tenure.end_date, self.end_date)
         max_start = max(tenure.start_date, self.start_date)
         return max(0, (min_end - max_start).days)
-
 
     def overlaps(self, tenure):
         return self.overlap_days(tenure) > 0

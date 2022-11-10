@@ -2,11 +2,11 @@ import logging
 import sys
 from pathlib import Path
 
+from docint.data_error import DataError
+from docint.vision import Vision
 from polyleven import levenshtein
 
 from ..extracts.orgpedia import OfficerID, OfficerIDNotFoundError
-from docint.region import DataError
-from docint.vision import Vision
 
 # b /Users/mukund/Software/docInt/docint/pipeline/id_assigner_fields.py:34
 
@@ -71,14 +71,10 @@ class IDAssignerMultipleFields:
                     birth_date_dict.setdefault(o.birth_date, []).append(o)
 
             name_ids = names_dict.items()
-            names_dict = dict(
-                (n, i) for n, i in name_ids if i not in duplicate_officer_ids
-            )
+            names_dict = dict((n, i) for n, i in name_ids if i not in duplicate_officer_ids)
             self.cadre_names_dict[cadre] = names_dict
             self.cadre_officers_dict[cadre] = officers_dict
-            print(
-                f"Duplicates: {cadre}: {len(duplicate_officer_ids)} {duplicate_names}"
-            )
+            print(f"Duplicates: {cadre}: {len(duplicate_officer_ids)} {duplicate_names}")
             self.cadre_names_dict2[cadre] = names2_dict
             self.cadre_birth_date_dict[cadre] = birth_date_dict
 
@@ -161,9 +157,7 @@ class IDAssignerMultipleFields:
             if len(inv_mat_officers) == 1:
                 return inv_mat_officers[0].officer_id
 
-            lev_mat_officers = [
-                o for o in mat_officers if leven_equal(o.birth_date, dob)
-            ]
+            lev_mat_officers = [o for o in mat_officers if leven_equal(o.birth_date, dob)]
             assert len(lev_mat_officers) in (
                 0,
                 1,
@@ -202,14 +196,10 @@ class IDAssignerMultipleFields:
                     return list(set_sel_officer_ids)[0]
                 else:
                     names = ", ".join(nd_names)
-                    self.lgr.info(
-                        f"\tUNMATCHED-nodate: {name_nows} -> [{len(set_nd_officer_ids)}]{names}]"
-                    )
+                    self.lgr.info(f"\tUNMATCHED-nodate: {name_nows} -> [{len(set_nd_officer_ids)}]{names}]")
             elif len(set_nd_officer_ids) > 2:
                 names = ", ".join(nd_names)
-                self.lgr.info(
-                    f"\tUNMATCHED-nodate: {name_nows} -> [{len(set_nd_officer_ids)}]{names}]"
-                )
+                self.lgr.info(f"\tUNMATCHED-nodate: {name_nows} -> [{len(set_nd_officer_ids)}]{names}]")
             else:
                 self.lgr.info(f"\tUNMATCHED-nodate: {name_nows} -> no match")
             return None
@@ -232,25 +222,17 @@ class IDAssignerMultipleFields:
             if levenshtein(o_name_nows, name_nows) <= cutoff:
                 officer_id = get_date_officer_id(mat_officers, dob)
                 if officer_id:
-                    self.lgr.info(
-                        f"Found-Sim: {officer.name} -> {officer_id} {o_name_nows}"
-                    )
+                    self.lgr.info(f"Found-Sim: {officer.name} -> {officer_id} {o_name_nows}")
                     return officer_id
                 else:
                     dobs = ", ".join(f"{o.birth_date}" for o in mat_officers)
-                    self.lgr.info(
-                        f"\tUNMATCHED-sim: {officer.name}({dob}) -> {o_name_nows}({dobs})"
-                    )
+                    self.lgr.info(f"\tUNMATCHED-sim: {officer.name}({dob}) -> {o_name_nows}({dobs})")
                     if len(mat_officers) == 1:
-                        unmatched.append(
-                            (mat_officers[0].officer_id, dobs, o_name_nows)
-                        )
+                        unmatched.append((mat_officers[0].officer_id, dobs, o_name_nows))
         if len(unmatched) == 1:
             officer_id, u_dob, u_name = unmatched[0]
             if levenshtein(f"{dob}", u_dob) == 1:
-                self.lgr.info(
-                    f"Found-date: {officer.name} -> {officer_id} {u_name} ({dob} = {u_dob})"
-                )
+                self.lgr.info(f"Found-date: {officer.name} -> {officer_id} {u_name} ({dob} = {u_dob})")
                 return officer_id
 
         self.lgr.info(f"UNMATCHED: {officer.name}({dob})")
@@ -278,9 +260,7 @@ class IDAssignerMultipleFields:
         if not officer_id:
             birth_date_dict = self.cadre_birth_date_dict[officer.cadre]
             # idxs = ", ".join(f"{w.path_abbr}->{w.text}<" for w in officer.words)
-            match_dobs = ", ".join(
-                o.name for o in birth_date_dict.get(officer.birth_date, [])
-            )
+            match_dobs = ", ".join(o.name for o in birth_date_dict.get(officer.birth_date, []))
             msg = f"{self.conf_stub} {doc.pdf_name} >{name}< |{match_dobs}"
             errors.append(OfficerIDNotFoundError(path=path, msg=msg))
 
@@ -302,9 +282,7 @@ class IDAssignerMultipleFields:
                 post.post_id = post_id if post_id else post.post_id
                 errors.extend(post_errors)
 
-        self.lgr.info(
-            f"=={doc.pdf_name}.id_assigner {len(doc.order.details)} {DataError.error_counts(errors)}"
-        )
+        self.lgr.info(f"=={doc.pdf_name}.id_assigner {len(doc.order.details)} {DataError.error_counts(errors)}")
         [self.lgr.info(str(e)) for e in errors]
         self.remove_log_handler(doc)
         return doc

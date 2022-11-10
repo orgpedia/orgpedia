@@ -7,17 +7,14 @@ from pathlib import Path
 
 from more_itertools import first
 
-from ..extracts.orgpedia import (
-    IncorrectOrderDateError,
-    Officer,
-    Order,
-    OrderDateNotFoundErrror,
-    OrderDetail,
-)
-from docint.region import DataError, UnmatchedTextsError
+from docint.data_error import DataError, UnmatchedTextsError
 from docint.util import find_date, load_config
 from docint.vision import Vision
 from docint.word_line import words_in_lines
+from docint.region import Region
+
+
+from ..extracts.orgpedia import IncorrectOrderDateError, Officer, Order, OrderDateNotFoundErrror, OrderDetail
 
 
 @Vision.factory(
@@ -53,9 +50,7 @@ class OrderBuilder:
         }
         if self.ignore_texts_file:
             self.ignore_texts_from_file = self.ignore_texts_file.read_text().split("\n")
-            self.ignore_texts_from_file = [
-                t.lower() for t in self.ignore_texts_from_file
-            ]
+            self.ignore_texts_from_file = [t.lower() for t in self.ignore_texts_from_file]
             print(f"Read {len(self.ignore_texts_from_file)} texts")
         else:
             self.ignore_texts_from_file = []
@@ -182,7 +177,7 @@ class OrderBuilder:
 
         if person_spans:
             person_span = person_spans[0]
-            officer_words = list_item.get_words_in_spans([person_span])
+            officer_words = list_item.get_words_for_spans([person_span])
 
             full_name = list_item.get_text_for_spans([person_span])
             full_name = full_name.strip(".|,-*():%/1234567890$ '")
@@ -221,8 +216,12 @@ class OrderBuilder:
             return None
 
     def get_order_date(self, doc):
-        order_date = doc.pages[0].layoutlm.get("ORDERDATEPLACE", [])
-        word_lines = words_in_lines(order_date, para_indent=False)
+        od_labels = doc.pages[0].word_labels.get("ORDERDATEPLACE", [])
+        
+        page_idxs = od_labels['page_idx_'] 
+        page_idx = page_idxs[0] if isinstance(page_idxs, list) else page_idxs
+        od_words = [doc[page_idx][w_idx] for w_idx in od_labels['word_idxs']]
+        word_lines = words_in_lines(Region.from_words(words=od_words), para_indent=False)
 
         result_dt, errors, date_text = None, [], ""
 
@@ -243,11 +242,11 @@ class OrderBuilder:
             date_text += date_line + "\n"
 
         if result_dt and (result_dt.year < 1947 or result_dt.year > 2022):
-            path = "pa0.layoutlm.ORDERDATEPLACE"
+            path = "pa0.word_labels.ORDERDATEPLACE"
             msg = f"{doc.pdf_name} Incorrect date: {result_dt} in {date_text}"
             errors.append(IncorrectOrderDateError(path=path, msg=msg))
         elif result_dt is None:
-            path = "pa0.layoutlm.ORDERDATEPLACE"
+            path = "pa0.word_labels.ORDERDATEPLACE"
             msg = f"{doc.pdf_name} text: >{date_text}<"
             errors.append(OrderDateNotFoundErrror(path=path, msg=msg))
 
@@ -258,8 +257,12 @@ class OrderBuilder:
         return result_dt, errors
 
     def get_order_number(self, doc):
-        order_number = doc.pages[0].layoutlm.get("HEADER", [])
-        word_lines = words_in_lines(order_number, para_indent=False)
+        on_labels = doc.pages[0].word_labels.get("HEADER", [])
+        page_idxs = on_labels['page_idx_'] 
+        page_idx = page_idxs[0] if isinstance(page_idxs, list) else page_idxs
+        on_words = [doc[page_idx][w_idx] for w_idx in on_labels['word_idxs']]
+
+        word_lines = words_in_lines(Region.from_words(words=on_words), para_indent=False)
         for word_line in word_lines:
             if word_line:
                 first_line = " ".join(w.text for w in word_line)
@@ -296,22 +299,28 @@ class OrderBuilder:
         list_item_text = list_item.line_text()
 
         # ident_str = f'{list_item.doc.pdf_name}:{path}'
-        edit_str = "|".join([f"{e}" for e in list_item.edits])
+        #edit_str = "|".join([f"{e}" for e in list_item.edits])
+        edit_str = "|"
 
         person_spans = list_item.get_spans("person")
         person_str = person_spans[0].span_str(list_item_text) if person_spans else ""
 
-        if type(list_item).__name__ == "ListItem":
-            errors = list_item.list_errors + post_info.errors
-        else:
-            errors = list_item.errors + post_info.errors
+        # if type(list_item).__name__ == "ListItem":
+        #     errors = list_item.list_errors + post_info.errors
+        # else:
+        #     errors = list_item.errors + post_info.errors
 
-        errors += order_detail.errors if order_detail is not None else []
+        # errors += order_detail.errors if order_detail is not None else []
+        errors = []
 
         # u_texts = [ t.lower() for t in list_item.get_unlabeled_texts() if t.lower() not in self.ignore_unmatched ]
-        u_texts = self.process_unmatched(list_item.get_unlabeled_texts())
+
+        u_texts, u_idxs = list_item.get_unlabeled_texts_idxs()
+        #u_texts = self.process_unmatched(list_item.get_unlabeled_texts())
+        u_texts = self.process_unmatched(u_texts)
         if u_texts:
-            errors.append(UnmatchedTextsError.build(path, u_texts))
+            u_idxs = [i for t in u_texts for i in u_idxs if i.startswith(t)]
+            errors.append(UnmatchedTextsError.build(path, u_texts, word_idxs=u_idxs))
 
         # u_texts_str = ' '.join(u_texts)
         # if not ('minis' in u_texts_str or 'depa' in u_texts_str):
@@ -323,7 +332,7 @@ class OrderBuilder:
         self.lgr.debug(str(post_info))
         if errors:
             self.lgr.debug("Error")
-            list_item.print_color_idx(self.color_config, width=150)
+            #list_item.print_color_idx(self.color_config, width=150)
             for e in errors:
                 self.lgr.debug(f"\t{str(e)}")
         self.lgr.debug("------------------------")
@@ -368,24 +377,18 @@ class OrderBuilder:
                         order_details.append(order_detail)
                         detail_idx += 1
 
-                    errors += self.test(
-                        list_item, order_detail, post_info, list_item_path
-                    )
+                    errors += self.test(list_item, order_detail, post_info, list_item_path)
                 else:
                     errors += self.test(list_item, None, post_info, list_item_path)
 
-        doc.order = Order.build(
-            doc.pdf_name, order_date, doc.pdffile_path, order_details
-        )
-        doc.order.category = "Change of Portfolio"        
+        doc.order = Order.build(doc.pdf_name, order_date, doc.pdffile_path, order_details)
+        doc.order.category = "Change of Portfolio"
 
         errors = [e for e in errors if not DataError.ignore_error(e, ignore_dict)]
 
         # self.write_fixes(doc, errors)
 
-        self.lgr.info(
-            f"=={doc.pdf_name}.order_builder {len(doc.order.details)} {DataError.error_counts(errors)}"
-        )
+        self.lgr.info(f"=={doc.pdf_name}.order_builder {len(doc.order.details)} {DataError.error_counts(errors)}")
         [self.lgr.info(str(e)) for e in errors]
         self.remove_log_handler(doc)
         return doc
@@ -401,12 +404,7 @@ class OrderBuilder:
             cell_unmat_str = ", ".join(u_error.texts)
 
             page_idx = cell.page.page_idx
-            unmatched_idxs = [
-                w.word_idx
-                for t in u_error.texts
-                for w in cell.words
-                if t.lower() in w.text.lower()
-            ]
+            unmatched_idxs = [w.word_idx for t in u_error.texts for w in cell.words if t.lower() in w.text.lower()]
             unmatched_paths = [f"pa{page_idx}.wo{idx}" for idx in unmatched_idxs]
             row = [
                 u_error.path,

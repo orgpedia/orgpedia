@@ -5,14 +5,15 @@ import unicodedata
 from pathlib import Path
 from typing import List
 
+from docint.vision import Vision
+from docint.data_error import DataError
+from docint.span import Span
+from docint.util import find_date, load_config, read_config_from_disk
 from more_itertools import first, flatten
 from polyleven import levenshtein
 
 from ..extracts.orgpedia import Officer, Order, OrderDetail
-from docint.region import DataError
-from docint.span import Span
-from docint.util import find_date, load_config, read_config_from_disk
-from docint.vision import Vision
+
 # from . import PostParser
 from .pdfpost_parser import PostEmptyRoleError, PostParser
 
@@ -168,15 +169,9 @@ class HindiOrderBuilder:
                 bad_msgs = []
                 for bad_char in bad:
                     bad_word = first([w for w in name_words if bad_char in w.text])
-                    bad_msgs.append(
-                        f"{bad_char}< >{bad_word.text}[{bad_word.word_idx}]"
-                    )
+                    bad_msgs.append(f"{bad_char}< >{bad_word.text}[{bad_word.word_idx}]")
                 msg = f'Has these bad chars: >{"< >".join(bad_msgs)}< in >{hi_name}<'
-                return [
-                    BadCharsInNameError(
-                        bad_chars=bad, hi_name=hi_name, path=path, msg=msg
-                    )
-                ]
+                return [BadCharsInNameError(bad_chars=bad, hi_name=hi_name, path=path, msg=msg)]
         return []
 
     def get_salut(self, name, merged_saluts=True):
@@ -228,11 +223,7 @@ class HindiOrderBuilder:
             else:
                 msg = f"Missing >{name_word}< in >{hi_name}<"
                 print(f"= Officer Error: {msg} {path}")
-                errors.append(
-                    IncorrectNameError(
-                        path=path, msg=msg, sub_str=name_word, full_name=hi_name
-                    )
-                )
+                errors.append(IncorrectNameError(path=path, msg=msg, sub_str=name_word, full_name=hi_name))
                 return ""
 
         if path == "pa0.ta0.ro10.ce1":
@@ -296,8 +287,8 @@ class HindiOrderBuilder:
             print("= Officer Name Errors")
             print("\n".join(str(e) for e in char_errors))
 
-        officer.errors = char_errors + name_errors + rel_errors
-        return officer, officer.errors
+        all_errors = char_errors + name_errors + rel_errors
+        return officer, all_errors
 
     def find_post_leven_match(self, hi_text, cutoff=1):
         if hi_text in self.post_leven_cache:
@@ -382,9 +373,7 @@ class HindiOrderBuilder:
         if untrans_texts:
             print(f"hi:>{hi_text}< en:>UntranslatableTextsInPostError< {path}")
             msg = f'Untranslatable texts: >{"<, >".join(untrans_texts)}< >{hi_text}<'
-            trans_err = UntranslatableTextsInPostError(
-                msg=msg, path=path, texts=untrans_texts, post_text=hi_text
-            )
+            trans_err = UntranslatableTextsInPostError(msg=msg, path=path, texts=untrans_texts, post_text=hi_text)
             return None, [trans_err]
 
         print(f"hi:>{hi_text}< en:>{post_str}< {path}")
@@ -394,7 +383,7 @@ class HindiOrderBuilder:
             print("= Post Error")
             print("\n".join(str(e) for e in post_errors))
 
-        post.errors = post_errors
+        post.has_issues = True
         return post, post_errors
 
     def build_detail(self, row, path, detail_idx):
@@ -409,9 +398,7 @@ class HindiOrderBuilder:
 
         if fr_post and not fr_post.role_hpath and self.from_role_hpath:
             fr_post.role_hpath = self.from_role_hpath
-            fr_post_errors = [
-                e for e in fr_post_errors if not isinstance(e, PostEmptyRoleError)
-            ]
+            fr_post_errors = [e for e in fr_post_errors if not isinstance(e, PostEmptyRoleError)]
 
         if not officer:
             return None, officer_errors + fr_post_errors + to_post_errors
@@ -436,17 +423,13 @@ class HindiOrderBuilder:
 
     def write_fixes(self, doc, errors):
         name_errors = [e for e in errors if isinstance(e, IncorrectNameError)]
-        post_errors = [
-            e for e in errors if isinstance(e, UntranslatableTextsInPostError)
-        ]
+        post_errors = [e for e in errors if isinstance(e, UntranslatableTextsInPostError)]
 
         for name_error in name_errors:
             row = [name_error.path, name_error.sub_str, name_error.full_name]
             cell = doc.get_region(name_error.path)
             cell_words = cell.arranged_words(cell.words)
-            sub_idx = first(
-                (w.word_idx for w in cell_words if name_error.sub_str == w.text), -1
-            )
+            sub_idx = first((w.word_idx for w in cell_words if name_error.sub_str == w.text), -1)
 
             cell_word_str = "|".join(f"{w.text}-{w.word_idx}" for w in cell_words)
             cell_img_str = cell.page.get_base64_image(cell.shape)
@@ -508,9 +491,7 @@ class HindiOrderBuilder:
         if "edits:\n  - " in curr_fixes_str:
             return []
 
-        old_fixes_dir = Path(
-            "/Users/mukund/orgpedia/rajapoli/pipeline/R.P.S/image/annDoc_/conf"
-        )
+        old_fixes_dir = Path("/Users/mukund/orgpedia/rajapoli/pipeline/R.P.S/image/annDoc_/conf")
         old_fixes_file = old_fixes_dir / f"fix.{doc.pdf_name}.yml"
         yml_dict = read_config_from_disk(old_fixes_file)
 
@@ -565,7 +546,7 @@ class HindiOrderBuilder:
         order_date = self.get_order_date(doc, doc_config.get("order_date", ""))
         # order_number = self.get_order_number(doc, doc_config.get("order_date", ""))
 
-        #doc.add_extra_field("order_details", ("list", __name__, "OrderDetails"))
+        # doc.add_extra_field("order_details", ("list", __name__, "OrderDetails"))
         doc.add_extra_field("order", ("obj", "orgpedia.extracts.orgpedia", "Order"))
 
         details, errors, detail_idx = [], [], 0
@@ -575,7 +556,7 @@ class HindiOrderBuilder:
 
             detail, d_errors = self.build_detail(row, path, detail_idx)
             if detail:
-                detail.errors = d_errors
+                #detail.errors = d_errors
                 details.append(detail)
             errors.extend(d_errors)
             detail_idx += 1
@@ -592,12 +573,11 @@ class HindiOrderBuilder:
                     new_errors.append(error)
             errors = new_errors
 
-        self.lgr.info(
-            f"=={doc.pdf_name}.hindi_order_builder {len(details)} {DataError.error_counts(errors)}"
-        )
+        self.lgr.info(f"=={doc.pdf_name}.hindi_order_builder {len(details)} {DataError.error_counts(errors)}")
         [self.lgr.info(str(e)) for e in errors]
 
-        self.write_fixes(doc, errors)
+        # TODO NOT WRITING FIXES
+        #self.write_fixes(doc, errors)
         # self.errors_dict[doc.pdf_name] = [(e, doc.get_region(e.path)) for e in errors]
 
         self.name_split_strs = old_name_split_strs
@@ -654,9 +634,7 @@ class HindiOrderBuilder:
         for pdf_name, error_regions in doc_errors:
             error_regions = sorted(error_regions, key=lambda er: str(type(er[0])))
 
-            html_lines, yml_lines = zip(
-                *(get_html_yml_lines(er) for er in error_regions)
-            )
+            html_lines, yml_lines = zip(*(get_html_yml_lines(er) for er in error_regions))
 
             html_str += f'<tr><td colspan="{len(headers)}" style="text-align:left;">'
             html_str += f"{pdf_name}</td></tr>\n"
@@ -710,7 +688,8 @@ class HindiOrderBuilder:
         yml_fixes_path.write_text(yml_str, encoding="utf-8")
 
     def __del__(self):
-        self.write_all_fixes()
+        pass
+        # self.write_all_fixes()
 
         # can't invoke this here as the documents get deleted first, not sure why ?
         # self.write_all_fixes2()

@@ -2,10 +2,11 @@ import logging
 import sys
 from pathlib import Path
 
-from ..extracts.orgpedia import Officer, Order, OrderDetail
-from docint.region import DataError
+from docint.data_error import DataError
 from docint.util import find_date
 from docint.vision import Vision
+
+from ..extracts.orgpedia import Officer, Order, OrderDetail
 
 
 @Vision.factory(
@@ -139,9 +140,7 @@ class PDFOrderBuilder:
         o_errors = self.test_officer(officer)
         p_errors = self.test_post(post)
 
-        d = OrderDetail.build(
-            row.words, [row.words], officer, row_idx, continues=[post]
-        )
+        d = OrderDetail.build(row.words, [row.words], officer, row_idx, continues=[post])
 
         print("--------")
         print(d.to_str())
@@ -163,14 +162,7 @@ class PDFOrderBuilder:
             return name, cadre
 
         def clean_text(v):
-            return (
-                v
-                if not v
-                else v.replace("\n", " ")
-                .replace("\xa0", " ")
-                .replace("*", "")
-                .replace("`", "")
-            )
+            return v if not v else v.replace("\n", " ").replace("\xa0", " ").replace("*", "").replace("`", "")
 
         o_fields = [
             "salut",
@@ -231,7 +223,7 @@ class PDFOrderBuilder:
     def __call__(self, doc):
         self.add_log_handler(doc)
         self.lgr.info(f"pdf_order_builder: {doc.pdf_name}")
-        #doc.add_extra_field("order_details", ("list", __name__, "OrderDetails"))
+        # doc.add_extra_field("order_details", ("list", __name__, "OrderDetails"))
         doc.add_extra_field("order", ("obj", "orgpedia.extracts.orgpedia", "Order"))
 
         order_date = self.get_order_date(doc)
@@ -243,7 +235,7 @@ class PDFOrderBuilder:
             post = page.posts[row_idx]
 
             detail, d_errors = self.build_detail(row, officer, post, path, detail_idx)
-            detail.errors = d_errors
+            #detail.errors = d_errors
             details.append(detail)
             errors.extend(d_errors)
             detail_idx += 1

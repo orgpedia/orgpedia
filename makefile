@@ -1,4 +1,4 @@
-sources = docint tests
+sources = orgpedia tests
 
 .PHONY: test format lint unittest coverage pre-commit clean
 test: format lint unittest

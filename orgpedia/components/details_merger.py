@@ -8,12 +8,12 @@ from operator import attrgetter
 from pathlib import Path
 from statistics import mean, median
 
+from docint.util import read_config_from_disk
+from docint.vision import Vision
 from more_itertools import first, flatten, partition
 from polyleven import levenshtein
 
 from ..extracts.orgpedia import OfficerID
-from docint.util import read_config_from_disk
-from docint.vision import Vision
 
 # b /Users/mukund/Software/docInt/docint/pipeline/details_merger.py:34
 
@@ -45,13 +45,7 @@ def align_name_match(short, long):
 
 
 def fix_name(name):
-    return (
-        name.lower()
-        .replace("kr.", "kumar")
-        .replace("pd.", "prasad")
-        .replace(" s.", "singh")
-        .replace(" ", "")
-    )
+    return name.lower().replace("kr.", "kumar").replace("pd.", "prasad").replace(" s.", "singh").replace(" ", "")
 
 
 def leven_equal(d1, d2, date_cutoff=1):
@@ -67,6 +61,7 @@ def fuzzy_date_match(d1, d2, date_cutoff=1):
 
 
 def get_duplicates(iter):
+    # Not set.add() returns None, so if condition returns False if item needs to be added
     seen = set()
     return [i for i in iter if i in seen or seen.add(i)]
 
@@ -100,7 +95,9 @@ class OfficerHistory:
         return len(self.details)
 
     def __str__(self):
-        return f"{self.details[0].officer.cadre}:{self.officer_id}: {self.names_str} [{len(self)}] {self.birth_date_str}"
+        return (
+            f"{self.details[0].officer.cadre}:{self.officer_id}: {self.names_str} [{len(self)}] {self.birth_date_str}"
+        )
 
     @property
     def names_str(self):
@@ -113,7 +110,7 @@ class OfficerHistory:
     def get_last_post(self):
         posts = self.details[-1].get_after_posts()
         assert len(posts) in (0, 1)
-        if posts and not posts[0].errors:
+        if posts and not posts[0].has_error():
             return posts[0]
         else:
             return None
@@ -142,27 +139,20 @@ class OfficerHistory:
 
     def exact_name_fuzzy_date_match(self, d_name, d_birth_date, date_cutoff=1):
         for name, birth_date in product(self.names, self.birth_dates):
-            if name == d_name and fuzzy_date_match(
-                d_birth_date, birth_date, date_cutoff
-            ):
+            if name == d_name and fuzzy_date_match(d_birth_date, birth_date, date_cutoff):
                 return True
         return False
 
     def fuzzy_name_exact_date_match(self, d_name, d_birth_date, name_cutoff=1):
         for name, birth_date in product(self.names, self.birth_dates):
-            if (
-                levenshtein(d_name, name, name_cutoff) <= name_cutoff
-                and d_birth_date == birth_date  # noqa: W503
-            ):
+            if levenshtein(d_name, name, name_cutoff) <= name_cutoff and d_birth_date == birth_date:  # noqa: W503
                 return True
         return False
 
     def fuzzy_name_date_match(self, d_name, d_birth_date, name_cutoff=1, date_cutoff=1):
         d_name = fix_name(d_name)
         for name, birth_date in product(self.names, self.birth_dates):
-            if levenshtein(
-                d_name, name, name_cutoff
-            ) <= name_cutoff and fuzzy_date_match(d_birth_date, birth_date):
+            if levenshtein(d_name, name, name_cutoff) <= name_cutoff and fuzzy_date_match(d_birth_date, birth_date):
                 return True
         return False
 
@@ -228,12 +218,8 @@ class OfficerHistory:
 
         o = self.details[0].officer
 
-        name_strs = sorted(
-            (name_str(d.officer) for d in self.details), key=lambda s: s.lower()
-        )
-        name_str_counts = [
-            (len(list(g)), n) for n, g in groupby(name_strs, key=lambda s: s.lower())
-        ]
+        name_strs = sorted((name_str(d.officer) for d in self.details), key=lambda s: s.lower())
+        name_str_counts = [(len(list(g)), n) for n, g in groupby(name_strs, key=lambda s: s.lower())]
         name_str_counts.sort(reverse=True)
         name_strs = [n for c, n in name_str_counts]
 
@@ -255,10 +241,7 @@ class OfficerHistory:
             home_location=o.home_district,
         )
         oid_dict = oid.dict()
-        oid_dict["details"] = [
-            f"{o_idx}>{d.detail_idx}"
-            for (o_idx, d) in zip(self.order_idxs, self.details)
-        ]
+        oid_dict["details"] = [f"{o_idx}>{d.detail_idx}" for (o_idx, d) in zip(self.order_idxs, self.details)]
         return oid_dict
 
 
@@ -375,7 +358,7 @@ class DetailsMerger:
         def get_before_post(detail):
             posts = detail.get_before_posts()
             assert len(posts) in (0, 1)
-            if posts and not posts[0].errors:
+            if posts and not posts[0].has_error():
                 return posts[0]
             else:
                 return None
@@ -455,9 +438,7 @@ class DetailsMerger:
         def exact_name_match():
             if not self.is_duplicate(officer_history):
                 for d_name, d in valid_details:
-                    if oh.exact_name_match(d_name) and (
-                        fix_name(d_name) not in self.duplicate_nows_names
-                    ):
+                    if oh.exact_name_match(d_name) and (fix_name(d_name) not in self.duplicate_nows_names):
                         return d
             return None
 
@@ -486,9 +467,7 @@ class DetailsMerger:
         detail = officer_id_match()
         if detail:
             if self.detail_added(order, detail):
-                self.lgr.info(
-                    f"HUGE DUPLICATE DETAIL ERROR officer_id_match {order.order_id}.{detail.detail_idx}"
-                )
+                self.lgr.info(f"HUGE DUPLICATE DETAIL ERROR officer_id_match {order.order_id}.{detail.detail_idx}")
             else:
                 self.lgr.info(
                     f"\tFound: {order_id}:{o_idx} officer_id_match {oh.names_str}<->{detail.officer.name} {oh.birth_date_str}<->{detail.officer.birth_date}"
@@ -502,16 +481,11 @@ class DetailsMerger:
                     f"HUGE DUPLICATE DETAIL ERROR exact_name_exact_date_match {order.order_id}.{detail.detail_idx}"
                 )
             else:
-                self.lgr.info(
-                    f"\tFound: {order_id}:{o_idx} exact_name_exact_date_match"
-                )
+                self.lgr.info(f"\tFound: {order_id}:{o_idx} exact_name_exact_date_match")
                 return detail
 
         o_cadre = oh.details[0].officer.cadre
-        valid_details = [
-            (fix_name(d.officer.name), d)
-            for d in list(iter_valid_details(order, o_cadre, oh_id))
-        ]
+        valid_details = [(fix_name(d.officer.name), d) for d in list(iter_valid_details(order, o_cadre, oh_id))]
 
         detail = exact_name_fuzzy_date_match()
         if detail:
@@ -558,16 +532,12 @@ class DetailsMerger:
 
         detail = exact_name_match()
         if detail:
-            self.lgr.info(
-                f"\tFound: {order_id}:{o_idx} exact_name_match {oh.names_str}<->{detail.officer.name}"
-            )
+            self.lgr.info(f"\tFound: {order_id}:{o_idx} exact_name_match {oh.names_str}<->{detail.officer.name}")
             return detail
 
         detail = fuzzy_name_match()
         if detail:
-            self.lgr.info(
-                f"\tFound: {order_id}:{o_idx} fuzzy_name_match {oh.names_str}<->{detail.officer.name}"
-            )
+            self.lgr.info(f"\tFound: {order_id}:{o_idx} fuzzy_name_match {oh.names_str}<->{detail.officer.name}")
             return detail
 
         return None
@@ -617,9 +587,7 @@ class DetailsMerger:
                 if o_detail:
                     o_history.add_detail(child_order, o_detail, child_oidx)
                     self.add_detail(child_order, o_detail)
-                    self.lgr.info(
-                        f"Adding {child_order.order_id} {child_oidx}>{o_detail.detail_idx}"
-                    )
+                    self.lgr.info(f"Adding {child_order.order_id} {child_oidx}>{o_detail.detail_idx}")
                 else:
                     pass
                     # self.lgr.info(f'\tNot Found: {child_order.order_id}:{child_oidx} {child_order.category} officer_id: {officer_id}')
@@ -632,9 +600,7 @@ class DetailsMerger:
         cadre_id_dict, officer_ids = {}, []
         for oh in officer_histories:
             for d in oh.details:
-                assert (
-                    not d.officer.officer_id
-                ), f"{str(oh)} detail.officer_id :{d.officer.officer_id}:"
+                assert not d.officer.officer_id, f"{str(oh)} detail.officer_id :{d.officer.officer_id}:"
 
             cadre = oh.details[0].officer.cadre
             officer_idx = cadre_id_dict.setdefault(cadre, 1)
@@ -679,20 +645,13 @@ class DetailsMerger:
         non_civil_orders = [o for o in orders if o.category != "civil_list"]
 
         # officer_id_dict
-        officerid_details = [
-            (o, d)
-            for o in orders
-            for d in o.details
-            if d.officer and d.officer.officer_id
-        ]
-        order_officerids = [
-            ((o.order_id, d.officer.officer_id), d) for o, d in officerid_details
-        ]
-        dup_order_officerids = get_duplicates(t[0] for t in order_officerids)
-        self.lgr.info(
-            f"#order_officerids duplicates: {len(dup_order_officerids)} {dup_order_officerids}"
-        )
+        officerid_details = [(o, d) for o in orders for d in o.details if d.officer and d.officer.officer_id]
+        order_officerids = [((o.order_id, d.officer.officer_id), d) for o, d in officerid_details]
         self.order_officerid_dict = dict(order_officerids)
+        
+        # duplicate handling
+        dup_order_officerids = get_duplicates(t[0] for t in order_officerids)
+        self.lgr.info(f"#order_officerids duplicates: {len(dup_order_officerids)} {dup_order_officerids}")
 
         self.order_name_birthdate_dict = dict(
             (
@@ -706,25 +665,11 @@ class DetailsMerger:
         total_details = sum(len(o.details) for o in orders)
         withid_details = len(self.order_officerid_dict)
 
-        non_civil_noid_details = len(
-            [
-                d
-                for o in non_civil_orders
-                for d in o.details
-                if (not d.officer.officer_id)
-            ]
-        )
+        non_civil_noid_details = len([d for o in non_civil_orders for d in o.details if (not d.officer.officer_id)])
         noid_post_error_details = len(
-            [
-                d
-                for o in non_civil_orders
-                for d in o.details
-                if (not d.officer.officer_id) and has_error_posts(d)
-            ]
+            [d for o in non_civil_orders for d in o.details if (not d.officer.officer_id) and has_error_posts(d)]
         )
-        print(
-            f"#non_civil_NOID_details: {non_civil_noid_details} #errors: {noid_post_error_details}"
-        )
+        print(f"#non_civil_NOID_details: {non_civil_noid_details} #errors: {noid_post_error_details}")
 
         sys.stderr.write(f"Built dict {now.hour:02}:{now.minute:02}:{now.second:02}\n")
         sys.stderr.flush()

@@ -8,9 +8,8 @@ from pathlib import Path
 
 import yaml
 from dateutil import parser
-from more_itertools import flatten
-
 from docint.vision import Vision
+from more_itertools import flatten
 
 # from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -163,9 +162,7 @@ class DetailInfo:
     },
 )
 class WebsiteGenerator:
-    def __init__(
-        self, conf_dir, conf_stub, officer_info_files, ministry_file, output_dir
-    ):
+    def __init__(self, conf_dir, conf_stub, officer_info_files, ministry_file, output_dir):
         self.conf_dir = Path(conf_dir)
         self.conf_stub = conf_stub
         self.officer_info_files = officer_info_files
@@ -183,23 +180,17 @@ class WebsiteGenerator:
         self.order_info_dict = {}
 
         if self.ministry_path.exists():
-            self.ministry_dict = yaml.load(
-                self.ministry_path.read_text(), Loader=yaml.FullLoader
-            )
+            self.ministry_dict = yaml.load(self.ministry_path.read_text(), Loader=yaml.FullLoader)
             for m in self.ministry_dict["ministries"]:
                 s, e = m["start_date"], m["end_date"]
                 m["start_date"] = parser.parse(s).date()
-                m["end_date"] = (
-                    parser.parse(e).date() if e != "today" else datetime.date.today()
-                )
+                m["end_date"] = parser.parse(e).date() if e != "today" else datetime.date.today()
         else:
             self.ministry_dict = {}
 
         from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-        self.env = Environment(
-            loader=FileSystemLoader("conf/templates"), autoescape=select_autoescape()
-        )
+        self.env = Environment(loader=FileSystemLoader("conf/templates"), autoescape=select_autoescape())
 
         self.lgr = logging.getLogger(__name__)
         self.lgr.setLevel(logging.DEBUG)
@@ -230,9 +221,7 @@ class WebsiteGenerator:
             else:
                 info_dict = json.loads(o_path.read_text())
 
-            info_dict = dict(
-                (d["officer_id"], OfficerInfo(d)) for d in info_dict["officers"]
-            )
+            info_dict = dict((d["officer_id"], OfficerInfo(d)) for d in info_dict["officers"])
             result_dict = {**result_dict, **info_dict}
             print(f"\t{officer_info_file} {len(info_dict)} {len(result_dict)}")
         return result_dict
@@ -259,7 +248,7 @@ class WebsiteGenerator:
         details = []
         for d in order.details:
             officer_id = d.officer.officer_id
-            if not officer_id:
+            if not officer_id or officer_id not in self.officer_info_dict:
                 continue
             officer_idx = self.officer_idx_dict.get(officer_id, 0)
             officer_name = self.officer_info_dict[officer_id].full_name
@@ -346,25 +335,16 @@ class WebsiteGenerator:
         html_path.write_text(self.render_html("officer", officer_info))
 
     def gen_officers_page(self):
-        officer_infos = sorted(
-            self.officer_info_dict.values(), key=attrgetter("first_char")
-        )
-        officer_groups = [
-            list(g) for k, g in groupby(officer_infos, key=attrgetter("first_char"))
-        ]
+        officer_infos = sorted(self.officer_info_dict.values(), key=attrgetter("first_char"))
+        officer_groups = [list(g) for k, g in groupby(officer_infos, key=attrgetter("first_char"))]
 
         print(f"Officer groups: {len(officer_groups)}")
         html_path = self.get_html_path("officers", "")
         html_path.write_text(self.render_html("officers", officer_groups))
 
     def gen_orders_page(self):
-        order_infos = sorted(
-            self.order_info_dict.values(), key=attrgetter("ministry_start_date", "date")
-        )
-        order_groups = [
-            list(g)
-            for k, g in groupby(order_infos, key=attrgetter("ministry_start_date"))
-        ]
+        order_infos = sorted(self.order_info_dict.values(), key=attrgetter("ministry_start_date", "date"))
+        order_groups = [list(g) for k, g in groupby(order_infos, key=attrgetter("ministry_start_date"))]
 
         print(f"Order groups: {len(order_groups)}")
         html_path = self.get_html_path("orders", "")
