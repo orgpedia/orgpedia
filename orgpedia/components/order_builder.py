@@ -189,15 +189,15 @@ class OrderBuilder:
                 name = name.replace(",", "")
 
             officer = Officer.build(officer_words, salut, name, cadre="goi_minister")
-            order_detail = OrderDetail.build(
-                list_item.words,
-                list_item.word_lines,
-                officer,
-                detail_idx,
-                continues=post_info.continues,
-                relinquishes=post_info.relinquishes,
-                assumes=post_info.assumes,
-            )
+            # order_detail = OrderDetail.build(
+            #     list_item.words,
+            #     list_item.word_lines,
+            #     officer,
+            #     detail_idx,
+            #     continues=post_info.continues,
+            #     relinquishes=post_info.relinquishes,
+            #     assumes=post_info.assumes,
+            # )
 
             order_detail = OrderDetail.build(
                 list_item.words,
