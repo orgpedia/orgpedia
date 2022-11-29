@@ -235,7 +235,7 @@ class PDFOrderBuilder:
             post = page.posts[row_idx]
 
             detail, d_errors = self.build_detail(row, officer, post, path, detail_idx)
-            #detail.errors = d_errors
+            # detail.errors = d_errors
             details.append(detail)
             errors.extend(d_errors)
             detail_idx += 1

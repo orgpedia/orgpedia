@@ -8,8 +8,8 @@ from docint.data_error import DataError
 from docint.hierarchy import Hierarchy, MatchOptions
 from docint.para import TextConfig
 from docint.region import Region
-from docint.vision import Vision
 from docint.span import Span
+from docint.vision import Vision
 
 from ..extracts.orgpedia import Post
 
@@ -192,7 +192,10 @@ class PostParserOnSentence:
                     [post_region.add_label(span, "role", self.text_config) for span in hier_span_group]
                 else:
                     dept_sg = hier_span_group
-                    [post_region.add_label(span, "dept", self.text_config, suppress_warning=True) for span in hier_span_group]
+                    [
+                        post_region.add_label(span, "dept", self.text_config, suppress_warning=True)
+                        for span in hier_span_group
+                    ]
                     spans += [span for span in hier_span_group]
             post_words = post_region.get_words_in_spans(spans)
             posts_dict[post_type].append(Post.build(post_words, post_region_str, dept_sg, role_sg))
@@ -225,6 +228,10 @@ class PostParserOnSentence:
         def build_post(post_fields_dict, post_spans):
             dept_sg = post_fields_dict.get("department", None)
             role_sg = post_fields_dict.get("role", None)
+
+            if dept_sg and not role_sg:
+                role_sg = default_role_sg
+
             post_words = post_region.get_words_for_spans(post_spans, self.text_config)
             return Post.build(post_words, post_region_str, dept_sg, role_sg)
 
@@ -232,15 +239,21 @@ class PostParserOnSentence:
         field_span_groups.sort(key=lambda tup: tup[1].min_start)
 
         field_spans = {}
-        verb, dept_role_groups_dict = "continues", {}
+        verb, dept_role_groups_dict, default_role_sg = "continues", {}, None
         for field, hier_span_group in field_span_groups:
             if hier_span_group.root == "verb":  # TODO move this to __verb__
                 verb = hier_span_group.leaf
                 verb_span = hier_span_group.spans[0]
-                #post_region.add_label(verb_span, "verb", self.text_config) CHANGED
+                # post_region.add_label(verb_span, "verb", self.text_config) CHANGED
                 field_spans.setdefault("verb", []).append(verb_span)
             else:
                 dept_role_groups_dict.setdefault(verb, []).append(hier_span_group)
+                if hier_span_group.root == "__role__":
+                    default_role_sg = hier_span_group
+        # end for
+
+        if not default_role_sg:
+            default_role_sg = self.hierarchy_dict["role"].find_match('Cabinet Minister', self.match_options)[0]
 
         # is_valid = True
         post_region_str = post_region.line_text(self.text_config)
@@ -257,9 +270,9 @@ class PostParserOnSentence:
                     post_field_dict, post_spans = {}, []
                 post_field_dict[field] = hier_span_group
                 post_spans += [span for span in hier_span_group]
-                #[post_region.add_label(Span(start=s.start, end=s.end), field, self.text_config) for s in hier_span_group]
+                # [post_region.add_label(Span(start=s.start, end=s.end), field, self.text_config) for s in hier_span_group]
                 field_spans.setdefault(field, []).extend(hier_span_group)
-                
+
             posts_dict[verb].append(build_post(post_field_dict, post_spans))
 
         for field, spans in field_spans.items():
@@ -319,6 +332,7 @@ class PostParserOnSentence:
                 self.lgr.debug(f"{post_str}\nSpans:\n----------")
                 self.lgr.debug(list_item.str_spans(indent="\t"))
                 post_info = self.parse(list_item, post_str, postinfo_idx)
+                doc.add_errors(post_info.errors)
                 page.post_infos.append(post_info)
 
         self.remove_log_handler(doc)

@@ -357,10 +357,11 @@ class PostParser:
                 post_errors = self.test(post, post_path)
                 if post_errors:
                     post.has_issues = True
-                    
+
                 errors.extend(post_errors)
             total_posts += len(page.posts)
 
+        doc.add_errors(errors)
         self.lgr.info(f"==Total:{total_posts} {DataError.error_counts(errors)}")
         [self.lgr.info(str(e)) for e in errors]
 

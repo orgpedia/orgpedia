@@ -348,7 +348,7 @@ class HindiOrderTagger:
             print("= Post Error")
             print("\n".join(str(e) for e in post_errors))
 
-        #post.errors = post_errors
+        # post.errors = post_errors
         return post, post_errors
 
     def build_detail(self, conf_detail, page):

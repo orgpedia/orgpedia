@@ -4,13 +4,15 @@ import functools
 import json
 import logging
 import sys
+from collections import Counter
 from itertools import groupby
-from operator import attrgetter
+from operator import attrgetter, itemgetter
 from pathlib import Path
 
 import yaml
 from babel.dates import format_date
 from dateutil import parser
+from docint.region import Region
 from docint.vision import Vision
 from more_itertools import first, flatten
 
@@ -70,7 +72,7 @@ class MinistryInfo:
         return self.end_date.year
 
     def has_date(self, dt):
-        return self.start_date <= dt < self.end_date 
+        return self.start_date <= dt < self.end_date
 
     @classmethod
     def get_tenure_date_pairs(cls, ministries, is_deputy=False):
@@ -269,6 +271,10 @@ class TenureInfo:
         self.lang = 'en'
 
     @property
+    def tenure_idx(self):
+        return self.tenure.tenure_idx
+
+    @property
     def dept(self):
         return self.post.dept
 
@@ -342,11 +348,16 @@ class OrderInfo:
         self.svg_pages = [get_svg_url(idx) for idx in range(num_pages)]
         self.category = getattr(order, 'category', 'Council of Ministers')
 
+        self.d_page_idxs = [d.page_idx for d in order.details]
+        self.first_page_num = self.d_page_idxs[0] + 1
+        self.first_page_url = self.svg_pages[self.first_page_num - 1]
+
         self.page_details_dict = {}
         [self.page_details_dict.setdefault(d.page_idx, []).append(d) for d in self.order.details]
 
-        self.category = getattr(order, 'category', 'Council of Ministers')
+        # self.category = getattr(order, 'category', 'Council of Ministers')
         self.crumbs = []
+        self.ppln_crumbs = []
 
     @property
     def detail_page_idxs(self):
@@ -394,13 +405,15 @@ class OrderInfo:
 
 
 class DetailInfo:
-    def __init__(self, detail, officer_idx, officer_name, officer_image_url):
+    def __init__(self, detail, officer_idx, officer_name, officer_image_url, order_id):
         self.officer_url = f"officer-{officer_idx}.html"
+        self.details_url = f"details-{order_id}.html?detail_num={detail.detail_idx +1}"
         self.name = officer_name
         self.officer_image_url = officer_image_url
         self.postinfo_dict = self.get_postinfo_dict(detail)
         self.short_post_str, self.long_post_str = self.get_all_html_post_str()
         self.idx = detail.detail_idx
+        self.page_idx = detail.page_idx
 
     def get_postinfo_dict(self, detail, lang='en'):
         postinfo_dict = {}
@@ -427,6 +440,106 @@ class DetailInfo:
         long_str = '\n'.join(post_lines[3:])
         return short_str, long_str
 
+    def to_json(self):
+        return [
+            self.name,
+            self.officer_image_url,
+            self.short_post_str,
+            self.long_post_str,
+            self.officer_url,
+            self.page_idx,
+        ]
+
+
+class DetailPipeInfo:
+    def __init__(self, pipe, pipe_idx, detail, doc):
+        def get_path(extract_object):
+            return getattr(extract_object, 'path', None)
+
+        def get_html_json(extract_objects):
+            if not extract_objects:
+                return 'Empty'
+
+            if hasattr(extract_objects[0], 'get_html_json'):
+                return f'[{", ".join(e.get_html_json() for e in extract_objects)}]'
+            elif type(extract_objects[0]) in (int, float, str):
+                return f'[{",".join(f"{e}" for e in extract_objects)}]'
+            else:
+                return f'[{", ".join(type(e).__name__ for e in extract_objects)}]'
+
+        # if doc.pdf_name == '1_Upload_2027.pdf' and pipe_idx == 6:
+        #     import pdb
+        #     pdb.set_trace()
+
+        detail_path = f'pa{detail.page_idx}.od{detail.detail_idx}'
+        relevant_extracts = doc.get_relevant_extracts(pipe, detail_path, detail.shape)
+
+        self.object_name = first(relevant_extracts.keys(), default='No Extract')
+        first_objects = first(relevant_extracts.values(), default=[])
+
+        self.object_count = "" if len(first_objects) <= 1 else len(first_objects)
+        self.object_html_json = get_html_json(first_objects)
+
+        all_objects = [o for objs in relevant_extracts.values() for o in objs]
+        self.object_paths = [get_path(o) for o in all_objects if get_path(o)]
+
+        self.pipe_name = pipe
+        self.pipe_idx = pipe_idx
+        self.pipe_config_url = 'http://TBD'
+        self.pipe_log_url = 'http://TBD'
+
+        self.pipe_error_count = -1
+        self.pipe_error_details = ''
+
+        self.pipe_edit_count = -1
+        self.pipe_edit_details = ''
+
+    def add_errors(self, detail_errors, all_errors):
+        def count_str(error_count):
+            e = error_count
+            return f'{e[0][:-6]}: {e[1]}/{e[2]}'
+
+        self.pipe_error_count = f"{len(detail_errors)}/{len(all_errors)}"
+
+        detail_counts = Counter(e.name for e in detail_errors)
+        all_counts = Counter(e.name for e in all_errors)
+
+        error_counts = [(n, detail_counts[n], c) for (n, c) in all_counts.items()]
+
+        error_counts.sort(key=itemgetter(1), reverse=True)
+        if error_counts:
+            self.pipe_error_details = str(count_str(e) for e in error_counts)
+        else:
+            self.pipe_error_details = ''
+
+    def add_edits(self, detail_edits, all_edits):
+        def count_str(edit_count):
+            e = edit_count
+            return f'{e[0][:-6]}: {e[1]}/{e[2]}'
+
+        self.pipe_edit_count = f"{len(detail_edits)}/{len(all_edits)}"
+
+        detail_counts = Counter(e.name for e in detail_edits)
+        all_counts = Counter(e.name for e in all_edits)
+
+        edit_counts = [(n, detail_counts[n], c) for (n, c) in all_counts.items()]
+
+        edit_counts.sort(key=itemgetter(1), reverse=True)
+        self.pipe_edit_details = str(count_str(e) for e in edit_counts)
+
+    def to_json(self):
+        return [
+            self.object_name,
+            self.object_count,
+            self.pipe_name,
+            self.object_html_json,
+            self.pipe_name,
+            self.pipe_error_count,
+            self.pipe_error_details,
+            self.pipe_edit_count,
+            self.pipe_edit_details,
+        ]
+
 
 @Vision.factory(
     "website_language_generator",
@@ -452,7 +565,7 @@ class WebsiteLanguageGenerator:
 
         ### TODO CHANGE THIS
         self.languages = ['hi', 'en', 'ur']
-        self.languages = ['en']
+        self.languages = []
 
         self.officer_info_dict = self.get_officer_infos(self.officer_info_files)
         print(f"#Officer_info: {len(self.officer_info_dict)}")
@@ -621,15 +734,18 @@ class WebsiteLanguageGenerator:
         return l
 
     def build_lang_label_infos(self, labels_trans_dict):
+        # import pdb
+        # pdb.set_trace()
+
         labels = [l for l in labels_trans_dict.keys()]
         labels = [l.replace(',', '').replace(' ', '_').lower() for l in labels]
 
         languages = self.languages + ['en'] if 'en' not in self.languages else self.languages  # noqa F841
 
-        init_dicts = dict((lang, {}) for lang in self.languages)
+        init_dicts = dict((lang, {}) for lang in languages)
 
         for (attr, label) in zip(labels, labels_trans_dict.keys()):
-            for lang in self.languages:
+            for lang in languages:
                 init_dicts[lang][attr] = labels_trans_dict[label][lang]
 
         label_info_dict = {}
@@ -709,9 +825,11 @@ class WebsiteLanguageGenerator:
 
     def get_tenure_jsons(self, officer_info):
         tenure_jsons = []
-        for ministry, tenures in officer_info.ministries.items():
+        for (ministry_idx, (ministry, tenures)) in enumerate(officer_info.ministries.items()):
             for tenure_info in tenures:
                 t_json = {'ministry': ministry}
+                t_json['tenure_idx'] = f'{tenure_info.tenure_idx}'
+                t_json['ministry_idx'] = ministry_idx
                 t_json['dept'] = f'{tenure_info.dept}'
                 t_json['role'] = f'{tenure_info.role}'
                 t_json['date_str'] = f'{tenure_info.start_date_str} - {tenure_info.end_date_str}'
@@ -745,13 +863,36 @@ class WebsiteLanguageGenerator:
             officer_idx = officer_info.officer_idx
             officer_name = officer_info.full_name
             officer_image_url = officer_info.image_url
-            details.append(DetailInfo(d, officer_idx, officer_name, officer_image_url))
+            details.append(DetailInfo(d, officer_idx, officer_name, officer_image_url, order.order_id))
 
-        num_pages = order.details[-1].page_idx + 1
+        num_pages = max(d.page_idx for d in order.details) + 1
         m = self.get_ministry(order.date)
         assert m, f'Unknown {order.date} in {order.order_id}'
         order_info = OrderInfo(order, details, m.name, m.start_date, m.end_date, num_pages)
         return order_info
+
+    def build_detail_ppln_infos(self, detail, doc):
+        def flatten_list(lists):
+            if lists and isinstance(lists[0], str):
+                return lists
+            else:
+                return list(flatten(lists))
+
+        detail_pipes = []
+        for pipe_idx, pipe in enumerate(reversed(doc.pipe_names)):
+            detail_pipes.append(DetailPipeInfo(pipe, pipe_idx, detail, doc))
+
+        all_detail_paths = set(flatten(p.object_paths for p in detail_pipes))
+
+        for pipe in detail_pipes:
+            pipe_errors = doc.get_errors(pipe.pipe_name)
+            detail_errors = [e for e in pipe_errors if e.path in all_detail_paths]
+            pipe.add_errors(detail_errors, pipe_errors)
+
+            # pipe_edits = doc.get_errors(pipe.pipe_name)
+            # detail_edits = [e for e in pipe_edits if set(e.paths) & all_detail_paths]
+            # pipe.add_edits(detail_edits, pipe_edits)
+        return detail_pipes
 
     def get_html_path(self, entity, idx, lang=None):
         if idx:
@@ -919,7 +1060,7 @@ class WebsiteLanguageGenerator:
         # officer_info.officer_idx = officer_idx
 
         self.populate_manager_infos(officer_info)
-        officer_info.tenure_json_str = json.dumps(self.get_tenure_jsons(officer_info))  # , indent=2)
+        officer_info.tenure_json_str = json.dumps(self.get_tenure_jsons(officer_info), indent=2)
 
         html_path = self.get_html_path("officer", officer_info.officer_idx)
         html_path.write_text(self.render_html("officer", officer_info))
@@ -989,6 +1130,48 @@ class WebsiteLanguageGenerator:
                 html_path = self.get_html_path("orders", en_idx, lang)
                 html_path.write_text(self.render_html("orders", lang_og_info, lang))
 
+    def gen_details_page(self, doc):
+        order = doc.order
+        if not order.details:
+            return
+
+        # import pdb
+        # pdb.set_trace()
+
+        order_info = self.order_info_dict[order.order_id]
+        detail_pplns_list = [self.build_detail_ppln_infos(d, doc) for d in order.details]
+
+        json_detail_list = [d.to_json() for d in order_info.details]
+        order_info.details_json_str = json.dumps(json_detail_list, indent=2)
+
+        json_ppln_list = []
+        for detail_pplns in detail_pplns_list:
+            detail_json_list = [d.to_json() for d in detail_pplns]
+            json_ppln_list.append(detail_json_list)
+        order_info.details_ppln_json_str = json.dumps(json_ppln_list, indent=2)
+
+        html_path = self.get_html_path("details", order.order_id)
+
+        # crumbs
+
+        # rendering it here as no translations.
+        site_info = self.lang_label_info_dict['en']
+        site_info.title = f'Order Details: ({order.order_id})'
+        site_info.page_url = f'details-{order.order_id}.html'
+        template = self.env.get_template("details.html")
+        first_detail_pplns = detail_pplns_list[0]
+        order_info.ppln_crumbs = [
+            (site_info.home, 'prime.html'),
+            (site_info.orders, f'orders-{order_info.get_ministry_years_str()}.html'),
+            (order_info.order_id, f'order-{order_info.order_id}.html'),
+            ('Detail-1', 'Detail-1'),
+        ]
+        html_path.write_text(
+            template.render(
+                site=site_info, order=order_info, detail=order_info.details[0], detail_ppln=first_detail_pplns
+            )
+        )
+
     def write_search_index(self):
         from lunr import lunr
 
@@ -1039,6 +1222,10 @@ class WebsiteLanguageGenerator:
         self.gen_officers_page()
         self.gen_orders_page()
 
+        print('Generating Details')
+        [self.gen_details_page(doc) for doc in docs]
+
+        print('Writing Search Index')
         self.write_search_index()
 
         self.lgr.info("Leaving website builder")

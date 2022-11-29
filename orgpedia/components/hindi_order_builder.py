@@ -5,10 +5,10 @@ import unicodedata
 from pathlib import Path
 from typing import List
 
-from docint.vision import Vision
 from docint.data_error import DataError
 from docint.span import Span
 from docint.util import find_date, load_config, read_config_from_disk
+from docint.vision import Vision
 from more_itertools import first, flatten
 from polyleven import levenshtein
 
@@ -556,7 +556,7 @@ class HindiOrderBuilder:
 
             detail, d_errors = self.build_detail(row, path, detail_idx)
             if detail:
-                #detail.errors = d_errors
+                # detail.errors = d_errors
                 details.append(detail)
             errors.extend(d_errors)
             detail_idx += 1
@@ -577,7 +577,7 @@ class HindiOrderBuilder:
         [self.lgr.info(str(e)) for e in errors]
 
         # TODO NOT WRITING FIXES
-        #self.write_fixes(doc, errors)
+        # self.write_fixes(doc, errors)
         # self.errors_dict[doc.pdf_name] = [(e, doc.get_region(e.path)) for e in errors]
 
         self.name_split_strs = old_name_split_strs

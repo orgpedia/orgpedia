@@ -3,12 +3,12 @@ import sys
 from pathlib import Path
 
 from docint.hierarchy import Hierarchy, MatchOptions
+from docint.region import Region
 from docint.span import SpanGroup
 from docint.util import find_date, load_config
 from docint.vision import Vision
 from docint.word_line import words_in_lines
 from more_itertools import first
-from docint.region import Region
 
 from ..extracts.orgpedia import IncorrectOrderDateError, Officer, Order, OrderDateNotFoundErrror, OrderDetail, Post
 
@@ -61,8 +61,8 @@ class OrderTagger:
 
     def get_order_date(self, doc):
         od_labels = doc.pages[0].word_labels.get("ORDERDATEPLACE", [])
-        
-        page_idxs = od_labels['page_idx_'] 
+
+        page_idxs = od_labels['page_idx_']
         page_idx = page_idxs[0] if isinstance(page_idxs, list) else page_idxs
         od_words = [doc[page_idx][w_idx] for w_idx in od_labels['word_idxs']]
         word_lines = words_in_lines(Region.from_words(words=od_words), para_indent=False)
@@ -146,7 +146,6 @@ class OrderTagger:
     def build_detail(self, conf_detail, page):
         officer = self.build_officer(conf_detail["officer"], page)
         detail_words = officer.words[:]
-
         verb_dict = {}
         for verb in ["continues", "relinquishes", "assumes"]:
             for conf_post in conf_detail.get(verb, []):
@@ -213,7 +212,7 @@ class OrderTagger:
 
         mode = doc_config.get("mode", "build")
 
-        if mode in ("merge_detail", "overwrite_detail"):
+        if mode in ("merge_detail", "overwrite_detail", "append_detail"):
             assert hasattr(doc, "order")
         else:
             assert not hasattr(doc, "order")
@@ -242,6 +241,10 @@ class OrderTagger:
                 else:
                     assert detail_idx == len(doc.order.details)
                     doc.order.details.append(detail)
+            if mode == "append_detail":
+                detail = self.build_detail(conf_detail, page)
+                assert conf_detail["detail_idx"] == len(doc.order.details)
+                doc.order.details.append(detail)
 
         if "order_date" in conf_order:
             order_date, _ = find_date(conf_order["order_date"])
@@ -255,6 +258,8 @@ class OrderTagger:
             doc.order.category = "Change of Portfolio"
         else:
             doc.order.date = order_date
+
+        doc.add_errors([])
 
         self.lgr.info(f"=={doc.pdf_name}.order_tagger {len(doc.order.details)}")
         self.remove_log_handler(doc)

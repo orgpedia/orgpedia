@@ -157,6 +157,13 @@ class Post(Region):
             posts_to_strs.append(" ".join(strs))
         return "-".join(posts_to_strs)
 
+    @property
+    def span_str(self):
+        span_strs = []
+        for field, spans in self.spans_dict.items():
+            span_strs.extend([f'>{self.post_str[s.slice()]}<' for s in spans])
+        return ','.join(span_strs)
+
     @classmethod
     def build(cls, words, post_str, dept=None, role=None, juri=None, loca=None, stat=None):
         def build_spans(label, spans):
@@ -304,6 +311,16 @@ class OrderDetail(Region):
     def get_regions(self):
         return [self.officer] + self.get_posts()
 
+    def get_html_json(self):
+        def get_posts_str(posts):
+            return "|".join(p.span_str for p in posts)
+
+        post_str = ''
+        for v in ['continues', 'relinquishes', 'assumes']:
+            post_str += f'{v}: [{get_posts_str(getattr(self, v))}]'
+
+        return f'{{name: {self.officer.name} {post_str}}}'
+
 
 class IncorrectOrderDateError(DataError):
     pass
@@ -347,6 +364,16 @@ class Order(Region):
 
     def get_officers(self, page_idx):
         return [d.officer for d in self.details if d.page_idx == page_idx]
+
+    @classmethod
+    def get_relevant_objects(cls, orders, path, shape):
+        assert len(orders) == 1
+        order = orders[0]
+
+        page_idx, detail_idx = path.split(".", 1)
+        page_idx, detail_idx = int(page_idx[2:]), int(detail_idx[2:])
+
+        return [order.details[detail_idx]]
 
 
 # If it is not extending Region should it still be there, yes as it will be moved to Orgpeida
@@ -400,6 +427,20 @@ class Tenure(BaseModel):
     def overlaps(self, tenure):
         return self.overlap_days(tenure) > 0
 
+    @classmethod
+    def get_relevant_objects(cls, tenures, path, shape):
+        _, path_detail_idx = path.split(".", 1)
+        path_detail_idx = int(path_detail_idx[2:])
+
+        return [t for t in tenures if t.start_detail_idx == path_detail_idx]
+
+    def get_html_json(self):
+        j = (
+            f'{{id: {self.tenure_idx}, position: 0, total_orders: {len(self.all_order_infos)},'
+            f'start_order: {self.start_order_id}, end_order: {self.end_order_id}}}'
+        )
+        return j
+
 
 class OfficerID(BaseModel):
     officer_idx: int = -1
@@ -412,12 +453,13 @@ class OfficerID(BaseModel):
     cadre: str = ""
 
     aliases: List[Dict[str, str]] = []
-    tenures: List[Tenure] = []
+    # tenures: List[Tenure] = []
 
     birth_date: datetime.date = None
     batch_year: int = -1
     home_location: str = ""
     education: str = ""
+    method: str = "computed"
 
     # currently not keeping language as that should be a separate process
 
@@ -429,6 +471,18 @@ class OfficerID(BaseModel):
 
         officers = [OfficerID(**d) for d in officer_jsons["officers"]]
         return officers
+
+    def get_html_lines(self):
+        return [f'OfficerID: {self.officer_id}', f'Name: {self.full_name}' f'Method: {self.method}']
+
+    @classmethod
+    def get_relevant_objects(cls, officerIDs, path, shape):
+        _, path_detail_idx = path.split(".", 1)
+        path_detail_idx = int(path_detail_idx[2:])
+
+        officerID = officerIDs[path_detail_idx]
+
+        return [officerID]
 
 
 class PostID(BaseModel):

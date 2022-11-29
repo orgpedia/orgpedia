@@ -90,6 +90,10 @@ class DetailInfo:
     def __str__(self):
         return f"{self.order_id} {self.officer_id} {self.post_id}"
 
+    @property
+    def verb_code(self):
+        return 0 if self.verb == 'relinquishes' else 1 if self.verb == 'assumes' else 0
+
 
 @Vision.factory(
     "tenure_builder",
@@ -121,6 +125,20 @@ class TenureBuilder:
         self.lgr.addHandler(stream_handler)
         self.file_handler = None
         self.curr_tenure_idx = -1
+
+    def add_log_handler(self):
+        handler_name = f"{self.conf_stub}.log"
+        log_path = Path("logs") / handler_name
+        self.file_handler = logging.FileHandler(log_path, mode="w")
+        self.lgr.info(f"adding handler {log_path}")
+
+        self.file_handler.setLevel(logging.DEBUG)
+        self.lgr.addHandler(self.file_handler)
+
+    def remove_log_handler(self):
+        self.file_handler.flush()
+        self.lgr.removeHandler(self.file_handler)
+        self.file_handler = None
 
     def build_detail_infos(self, order):
         def valid_date(order):
@@ -256,7 +274,9 @@ class TenureBuilder:
                         errors.append(TenureMissingAssumeError.build(info))
                         continue
                     start_info.all_infos.append(info)
-                    assert o_id == info.order_id and d_idx == info.detail_idx, f'{o_id} == {info.order_id}, {d_idx} == {info.detail_idx}'
+                    assert (
+                        o_id == info.order_id and d_idx == info.detail_idx
+                    ), f'{o_id} == {info.order_id}, {d_idx} == {info.detail_idx}'
                     o_tenures.append(build_tenure(start_info, o_id, o_date, d_idx))
                     self.lgr.info(f"\t\tClosing Active: {info.post_id} {o_id} {d_idx}")
                     del postid_info_dict[info.post_id]
@@ -271,7 +291,7 @@ class TenureBuilder:
                 officer_tenures.append(build_tenure(info, "", end_date, -1))
             postid_info_dict.clear()
 
-        detail_infos = sorted(detail_infos, key=lambda i: (i.order_date, i.order_id))
+        detail_infos = sorted(detail_infos, key=lambda i: (i.order_date, i.verb_code, i.order_id))
         self.lgr.info(f"\n## Processing Officer: {officer_id} #detailpost_infos: {len(detail_infos)}")
 
         postid_info_dict, officer_tenures, prev_ministry = {}, [], None
@@ -283,10 +303,9 @@ class TenureBuilder:
                     self.lgr.info("\tNew ministry Clearing older posts.")
                     close_order_infos()
                 prev_ministry = curr_ministry
-                
+
             self.lgr.info(f"Order: {order_id} #detailpost_infos: {len(order_infos)}")
             officer_tenures += handle_order_infos(order_infos)
-
 
         if postid_info_dict:
             self.lgr.warning(f"***No Closing Orders{get_postids(postid_info_dict.keys())}")
@@ -337,11 +356,13 @@ class TenureBuilder:
         tenure_output_path.write_text(json.dumps({"tenures": tenure_dicts}, indent=2))
 
     def pipe(self, docs, **kwargs):
+        self.add_log_handler()
         print("Inside tenure_builder")
         self.lgr.info("Entering tenure builder")
         docs = list(docs)
 
         for doc in docs:
+            doc.add_pipe("tenure_builder")
             doc.add_extra_field("tenures", ("list", "orgpedia.extracts.orgpedia", "Tenure"))
 
         orders = [doc.order for doc in docs]
@@ -371,4 +392,5 @@ class TenureBuilder:
         self.write_tenures(tenures)
         self.lgr.info(f"=={doc.pdf_name}.tenure_builder {len(tenures)} {DataError.error_counts(errors)}")
         self.lgr.info("Leaving tenure_builder")
+        self.remove_log_handler()
         return docs

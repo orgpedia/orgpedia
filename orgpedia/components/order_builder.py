@@ -5,16 +5,27 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from more_itertools import first
-
 from docint.data_error import DataError, UnmatchedTextsError
+from docint.region import Region
 from docint.util import find_date, load_config
 from docint.vision import Vision
 from docint.word_line import words_in_lines
-from docint.region import Region
-
+from more_itertools import first
 
 from ..extracts.orgpedia import IncorrectOrderDateError, Officer, Order, OrderDateNotFoundErrror, OrderDetail
+
+"""
+# TODO: 
+1. Can we create a common list of words to be ignored"
+2. Do we need to colors here, or that can be separate component that just prints the values ? (Thinking alound)
+3. Need a name parser and name finder
+4. merge the post_info finder with this, by moving 
+5. consolidate order date finding in a single class
+6. need a clear way of finalizing what goes in info and what goes in debug
+7. need a clear way of testing objects and adding errors, handling ignores, writing log
+
+
+"""
 
 
 @Vision.factory(
@@ -217,8 +228,8 @@ class OrderBuilder:
 
     def get_order_date(self, doc):
         od_labels = doc.pages[0].word_labels.get("ORDERDATEPLACE", [])
-        
-        page_idxs = od_labels['page_idx_'] 
+
+        page_idxs = od_labels['page_idx_']
         page_idx = page_idxs[0] if isinstance(page_idxs, list) else page_idxs
         od_words = [doc[page_idx][w_idx] for w_idx in od_labels['word_idxs']]
         word_lines = words_in_lines(Region.from_words(words=od_words), para_indent=False)
@@ -258,7 +269,7 @@ class OrderBuilder:
 
     def get_order_number(self, doc):
         on_labels = doc.pages[0].word_labels.get("HEADER", [])
-        page_idxs = on_labels['page_idx_'] 
+        page_idxs = on_labels['page_idx_']
         page_idx = page_idxs[0] if isinstance(page_idxs, list) else page_idxs
         on_words = [doc[page_idx][w_idx] for w_idx in on_labels['word_idxs']]
 
@@ -299,7 +310,7 @@ class OrderBuilder:
         list_item_text = list_item.line_text()
 
         # ident_str = f'{list_item.doc.pdf_name}:{path}'
-        #edit_str = "|".join([f"{e}" for e in list_item.edits])
+        # edit_str = "|".join([f"{e}" for e in list_item.edits])
         edit_str = "|"
 
         person_spans = list_item.get_spans("person")
@@ -316,7 +327,7 @@ class OrderBuilder:
         # u_texts = [ t.lower() for t in list_item.get_unlabeled_texts() if t.lower() not in self.ignore_unmatched ]
 
         u_texts, u_idxs = list_item.get_unlabeled_texts_idxs()
-        #u_texts = self.process_unmatched(list_item.get_unlabeled_texts())
+        # u_texts = self.process_unmatched(list_item.get_unlabeled_texts())
         u_texts = self.process_unmatched(u_texts)
         if u_texts:
             u_idxs = [i for t in u_texts for i in u_idxs if i.startswith(t)]
@@ -332,7 +343,7 @@ class OrderBuilder:
         self.lgr.debug(str(post_info))
         if errors:
             self.lgr.debug("Error")
-            #list_item.print_color_idx(self.color_config, width=150)
+            # list_item.print_color_idx(self.color_config, width=150)
             for e in errors:
                 self.lgr.debug(f"\t{str(e)}")
         self.lgr.debug("------------------------")
@@ -385,6 +396,7 @@ class OrderBuilder:
         doc.order.category = "Change of Portfolio"
 
         errors = [e for e in errors if not DataError.ignore_error(e, ignore_dict)]
+        doc.add_errors(errors)
 
         # self.write_fixes(doc, errors)
 

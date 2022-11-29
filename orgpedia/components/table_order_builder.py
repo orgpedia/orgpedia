@@ -10,13 +10,13 @@ from string import punctuation
 from docint.data_error import DataError, UnmatchedTextsError
 from docint.hierarchy import Hierarchy, MatchOptions
 from docint.para import TextConfig
-from docint.vocab import Vocab
+from docint.region import Region
 from docint.span import Span, SpanGroup
 from docint.table import TableEmptyBodyCellError, TableMismatchColsError
 from docint.util import find_date, load_config, read_config_from_disk
 from docint.vision import Vision
+from docint.vocab import Vocab
 from docint.word_line import words_in_lines
-from docint.region import Region
 from enchant import request_pwl_dict
 from more_itertools import first
 
@@ -85,7 +85,7 @@ class TableOrderBuidler:
         self.ignore_unmatched = set(i.split("-"))
 
         self.vocab = Vocab(self.dict_file.read_text().split('\n'))
-        #self.dictionary = request_pwl_dict(str(self.dict_file))
+        # self.dictionary = request_pwl_dict(str(self.dict_file))
 
         self.unmatched_ctr = Counter()
         self.punct_tbl = str.maketrans(punctuation, " " * len(punctuation))
@@ -149,8 +149,7 @@ class TableOrderBuidler:
                         pass
                     # self.lgr.info(f'unicode text not found: {u_text}\n')
             return not_found
-            
-        
+
         errors = []
         if not officer_cell:
             msg = "empty cell"
@@ -244,7 +243,7 @@ class TableOrderBuidler:
                         pass
                     # self.lgr.info(f'unicode text not found: {u_text}\n')
             return not_found
-        
+
         posts, errors = [], []
         if not post_cell:
             msg = "empty cell"
@@ -256,7 +255,7 @@ class TableOrderBuidler:
         ignore_config = TextConfig(rm_labels=["ignore"])
         post_str = post_cell.line_text(ignore_config)
 
-        print(post_str)        
+        print(post_str)
         paren_spans = self.get_paren_spans(post_str)
         print(paren_spans)
         post_cell.add_label(paren_spans, "ignore", ignore_config)
@@ -333,7 +332,13 @@ class TableOrderBuidler:
         post_cell = row.cells[2] if len(row.cells) > 2 else ""
         posts, post_errors = self.get_posts(post_cell, f"{path}.ce2", ignore_dict, table_role)
 
-        (c, r) = (posts, []) if doc_verb == "continues" else ([], posts)
+        c, r, a = [], [], []
+        if doc_verb == "continues":
+            c = posts
+        elif doc_verb == "relinquishes":
+            r = posts
+        elif doc_verb == "assumes":
+            a = posts
 
         d = OrderDetail.build(
             row.words,
@@ -342,9 +347,9 @@ class TableOrderBuidler:
             detail_idx,
             continues=c,
             relinquishes=r,
-            assumes=[],
+            assumes=a,
         )
-        all_errors = officer_errors + post_errors        
+        all_errors = officer_errors + post_errors
         print("--------")
         print(d.to_str())
         if all_errors:
@@ -354,23 +359,21 @@ class TableOrderBuidler:
         self.lgr.debug("--------")
         self.lgr.debug(d.to_str())
 
-
         return d, all_errors
 
     def get_order_date(self, doc):
         od_labels = doc.pages[0].word_labels.get("ORDERDATEPLACE", {})
         # import pdb
         # pdb.set_trace()
-        
+
         if not od_labels:
             errors = []
             path = "pa0.word_labels.ORDERDATEPLACE"
             msg = f"{doc.pdf_name} text: EMPTY"
             errors.append(OrderDateNotFoundErrror(path=path, msg=msg))
             return None, errors
-            
-        
-        page_idxs = od_labels['page_idx_'] 
+
+        page_idxs = od_labels['page_idx_']
         page_idx = page_idxs[0] if isinstance(page_idxs, list) else page_idxs
         od_words = [doc[page_idx][w_idx] for w_idx in od_labels['word_idxs']]
         word_lines = words_in_lines(Region.from_words(words=od_words), para_indent=False)
@@ -396,7 +399,7 @@ class TableOrderBuidler:
         if not result_dt and date_text:
             dt, err_msg = find_date(date_text)
             if dt and (not err_msg):
-                result_dt = dt            
+                result_dt = dt
 
         if result_dt and (result_dt.year < 1947 or result_dt.year > 2022):
             path = "pa0.word_labels.ORDERDATEPLACE"
@@ -412,7 +415,6 @@ class TableOrderBuidler:
 
         print(f"Order Date: {result_dt}")
         return result_dt, errors
-        
 
     def iter_rows(self, doc):
         detail_idx = 0
@@ -423,17 +425,25 @@ class TableOrderBuidler:
                     detail_idx += 1
 
     def get_verb(self, doc, page_idx):
-        def has_word(query, page):
-            return any(w for w in page.words if query in w.text)
+        def has_any_words(queries, page):
+            for query in queries:
+                if any(w for w in page.words if query in w.text):
+                    return True
+            return False
 
         if self.verb_pages:
             vps = self.verb_pages.items()
             page_verb = first((v for v, p_idxs in vps if page_idx in p_idxs), 'continues')
+            print('*** page_idx: {page_idx} verb:{page_verb}')
             return page_verb
         else:
-            if len(doc.pages) > 1 and has_word('relinquish', doc.pages[0]):
+            page = doc[0]
+            if len(doc.pages) > 1 and has_any_words(('relinquish', 'resigned'), page):
                 print('*** FOUND RELINQUISHED ***')
-                return 'relinquished'
+                return 'relinquishes'
+            elif has_any_words(['assume'], page):
+                print(f'*** FOUND ASSUMED *** {doc.pdf_name}')
+                return 'assumes'
             else:
                 return 'continues'
 
@@ -474,8 +484,6 @@ class TableOrderBuidler:
         if edits:
             print(f"Edited document: {doc.pdf_name}")
             doc.edit(edits)
-            
-            
 
         ignore_dict = doc_config.get("ignores", {})
         if ignore_dict:
@@ -488,7 +496,7 @@ class TableOrderBuidler:
         table_role = 'Cabinet Minister'
 
         for page_idx, table_idx, row_idx, row, detail_idx in self.iter_rows(doc):
-            doc_verb = self.get_verb(doc, page_idx)
+            doc_verb = self.get_verb(doc, page_idx)  ## TODO THIS IS VERY SLOW, do this one for page
             table_title = doc.pages[page_idx].tables[table_idx].title
             if table_title:
                 table_title = table_title.raw_text().strip()
@@ -503,7 +511,7 @@ class TableOrderBuidler:
                 ignore_dict,
                 table_role,
             )
-            #detail.errors = d_errors
+            # detail.errors = d_errors
             order_details.append(detail)
             errors.extend(d_errors)
 
@@ -512,7 +520,9 @@ class TableOrderBuidler:
 
         # self.write_fixes(doc, errors)
 
-        errors = [e for e in errors if not DataError.ignore_error(e, ignore_dict)]        
+        errors = [e for e in errors if not DataError.ignore_error(e, ignore_dict)]
+
+        doc.add_errors(errors)
 
         self.lgr.info(f"=={doc.pdf_name}.table_order_builder {len(doc.order.details)} {DataError.error_counts(errors)}")
         [self.lgr.info(str(e)) for e in errors]

@@ -5,14 +5,36 @@ from pathlib import Path
 
 from dateutil import parser
 from docint.data_error import DataError
+from docint.region import Region
 from docint.util import load_config, read_config_from_disk
 from docint.vision import Vision
 from enchant import request_pwl_dict
 from more_itertools import first
+from pydantic import BaseModel
 
 from ..extracts.orgpedia import OfficerID, OfficerIDNotFoundError
 
 # b /Users/mukund/Software/docInt/docint/pipeline/id_assigner.py:34
+
+
+class OfficerIDInfo(Region):
+    officer_id: str
+    name: str
+    method: str
+
+    def get_html_lines(self):
+        return [f'OfficerID: {self.officer_id}', f'Name: {self.name}' f'Method: {self.method}']
+
+    @classmethod
+    def get_relevant_objects(cls, officerIDInfos, path, shape):
+        _, path_detail_idx = path.split(".", 1)
+        path_detail_idx = int(path_detail_idx[2:])
+
+        officerIDInfo = officerIDInfos[path_detail_idx]
+        return [officerIDInfo]
+
+    def get_html_json(self):
+        return f'{{ID: {self.officer_id}, name: {self.name}, method: {self.method} }}'
 
 
 @Vision.factory(
@@ -40,9 +62,10 @@ class IDAssigner:
         self.conf_stub = Path(conf_stub)
         self.pre_edit = pre_edit
         self.post_id_fields = post_id_fields
-
         self.cadre_names_dict = {}
         self.cadre_names_dictionary = {}
+        self.officerID_dict = {}
+
         for cadre, cadre_file in cadre_file_dict.items():
             officers = OfficerID.from_disk(cadre_file)
             names_dict = {}
@@ -50,6 +73,8 @@ class IDAssigner:
                 names = [o.name] + [a["name"] for a in o.aliases]
                 names_nows = set(n.replace(" ", "") for n in names)
                 [names_dict.setdefault(n.lower(), o.officer_id) for n in names_nows]
+
+                self.officerID_dict[o.officer_id] = o
             self.cadre_names_dict[cadre] = names_dict
 
             dictionary_file = self.conf_dir / f"{cadre}.dict"
@@ -149,18 +174,47 @@ class IDAssigner:
         conf_officer_ids = doc_config.get("officer_ids", {})
 
         errors = []
-        for detail in doc.order.details:
-            if detail.detail_idx == 48:
-                print("Foudn It")
+        doc.add_extra_field("officerIDs", ("list", __name__, "OfficerIDInfo"))
 
+        doc.officerIDs = []
+
+        for detail in doc.order.details:
             officer = detail.officer
+            method = 'computed'
             if detail.detail_idx in conf_officer_ids:
                 officer.officer_id = conf_officer_ids[detail.detail_idx]
                 self.lgr.info(f'** Setting officer_id: {officer.officer_id} {officer.name}')
                 officer_errors = []
+                method = 'manual'
+
             else:
                 officer_id, officer_errors = self.get_officer_id(doc, officer, detail.path)
                 officer.officer_id = officer_id if officer_id else officer.officer_id
+
+            officerID = self.officerID_dict.get(officer.officer_id, None)
+            words = officer.words if officer else []
+            word_idxs = officer.word_idxs if officer else []
+
+            if officerID:
+                officerIDInfo = OfficerIDInfo(
+                    officer_id=officer.officer_id,
+                    name=officerID.full_name,
+                    method=method,
+                    words=words,
+                    word_idxs=word_idxs,
+                    page_idx_=detail.page_idx,
+                )
+            else:
+                officerIDInfo = OfficerIDInfo(
+                    officer_id="UNKNOWN",
+                    name="",
+                    method=method,
+                    words=words,
+                    word_idxs=word_idxs,
+                    page_idx_=detail.page_idx,
+                )
+
+            doc.officerIDs.append(officerIDInfo)
 
             errors.extend(officer_errors)
             for post in detail.get_posts("all"):
@@ -170,6 +224,7 @@ class IDAssigner:
 
             self.lgr.debug(detail.to_id_str())
 
+        doc.add_errors(errors)
         self.lgr.info(f"=={doc.pdf_name}.id_assigner {len(doc.order.details)} {DataError.error_counts(errors)}")
         [self.lgr.info(str(e)) for e in errors]
         self.remove_log_handler(doc)

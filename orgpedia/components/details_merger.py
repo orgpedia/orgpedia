@@ -648,7 +648,7 @@ class DetailsMerger:
         officerid_details = [(o, d) for o in orders for d in o.details if d.officer and d.officer.officer_id]
         order_officerids = [((o.order_id, d.officer.officer_id), d) for o, d in officerid_details]
         self.order_officerid_dict = dict(order_officerids)
-        
+
         # duplicate handling
         dup_order_officerids = get_duplicates(t[0] for t in order_officerids)
         self.lgr.info(f"#order_officerids duplicates: {len(dup_order_officerids)} {dup_order_officerids}")
