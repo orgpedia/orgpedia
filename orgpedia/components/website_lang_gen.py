@@ -456,6 +456,12 @@ class DetailPipeInfo:
         def get_path(extract_object):
             return getattr(extract_object, 'path', None)
 
+        def svg_info(extract_object):
+            if hasattr(extract_object, 'get_svg_info'):
+                return extract_object.get_svg_info()
+            else:
+                return None
+
         def get_html_json(extract_objects):
             if not extract_objects:
                 return 'Empty'
@@ -467,10 +473,6 @@ class DetailPipeInfo:
             else:
                 return f'[{", ".join(type(e).__name__ for e in extract_objects)}]'
 
-        # if doc.pdf_name == '1_Upload_2027.pdf' and pipe_idx == 6:
-        #     import pdb
-        #     pdb.set_trace()
-
         detail_path = f'pa{detail.page_idx}.od{detail.detail_idx}'
         relevant_extracts = doc.get_relevant_extracts(pipe, detail_path, detail.shape)
 
@@ -479,9 +481,13 @@ class DetailPipeInfo:
 
         self.object_count = "" if len(first_objects) <= 1 else len(first_objects)
         self.object_html_json = get_html_json(first_objects)
+        self.object_sub_name = "" if len(first_objects) == 0 else type(first_objects[0]).__name__
 
         all_objects = [o for objs in relevant_extracts.values() for o in objs]
         self.object_paths = [get_path(o) for o in all_objects if get_path(o)]
+
+        self.svg_infos = [svg_info(o) for o in all_objects]
+        self.svg_infos = [i for i in self.svg_infos if i]
 
         self.pipe_name = pipe
         self.pipe_idx = pipe_idx
@@ -529,15 +535,16 @@ class DetailPipeInfo:
 
     def to_json(self):
         return [
-            self.object_name,
-            self.object_count,
-            self.pipe_name,
-            self.object_html_json,
-            self.pipe_name,
-            self.pipe_error_count,
-            self.pipe_error_details,
-            self.pipe_edit_count,
-            self.pipe_edit_details,
+            self.object_name,        # 0
+            self.object_count,       # 1
+            self.object_html_json,   # 2
+            self.svg_infos,          # 3
+            self.pipe_name,          # 4
+            self.pipe_error_count,   # 5
+            self.pipe_error_details, # 6
+            self.pipe_edit_count,    # 7
+            self.pipe_edit_details,  # 8
+            self.object_sub_name,
         ]
 
 
@@ -564,8 +571,8 @@ class WebsiteLanguageGenerator:
         self.translation_file = Path(translation_file)
 
         ### TODO CHANGE THIS
-        self.languages = ['hi', 'en', 'ur']
-        self.languages = []
+        self.languages = ['hi', 'en']
+
 
         self.officer_info_dict = self.get_officer_infos(self.officer_info_files)
         print(f"#Officer_info: {len(self.officer_info_dict)}")
@@ -895,6 +902,11 @@ class WebsiteLanguageGenerator:
         return detail_pipes
 
     def get_html_path(self, entity, idx, lang=None):
+        if lang:
+            lang_dir = self.output_dir / lang
+            if not lang_dir.exists():
+                lang_dir.mkdir(parents=True)
+        
         if idx:
             if lang:
                 return self.output_dir / lang / f"{entity}-{idx}.html"

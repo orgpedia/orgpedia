@@ -22,9 +22,6 @@ class OfficerIDInfo(Region):
     name: str
     method: str
 
-    def get_html_lines(self):
-        return [f'OfficerID: {self.officer_id}', f'Name: {self.name}' f'Method: {self.method}']
-
     @classmethod
     def get_relevant_objects(cls, officerIDInfos, path, shape):
         _, path_detail_idx = path.split(".", 1)
@@ -35,6 +32,9 @@ class OfficerIDInfo(Region):
 
     def get_html_json(self):
         return f'{{ID: {self.officer_id}, name: {self.name}, method: {self.method} }}'
+
+    def get_svg_info(self):
+        return {'idxs': {'person': [w.word_idx for w in self.words]}}
 
 
 @Vision.factory(

@@ -321,6 +321,19 @@ class OrderDetail(Region):
 
         return f'{{name: {self.officer.name} {post_str}}}'
 
+    def get_svg_info(self):
+        def idxs(post):
+            return [w.word_idx for w in post.words]
+
+        shape_info = {'detail': self.get_box_to_svg()}
+        idx_info = {'officer': idxs(self.officer),
+                    'continues_posts': list(set(flatten([ idxs(p) for p in self.continues]))),
+                    'assumes_posts': list(set(flatten([ idxs(p) for p in self.assumes]))),
+                    'relinquishes_posts': list(set(flatten([ idxs(p) for p in self.relinquishes]))),
+                    }
+        return {'shapes': shape_info, 'idxs': idx_info}
+    
+
 
 class IncorrectOrderDateError(DataError):
     pass
