@@ -11,10 +11,14 @@ from pathlib import Path
 
 import yaml
 from babel.dates import format_date
+from more_itertools import first, flatten
+
+
 from dateutil import parser
 from docint.region import Region
 from docint.vision import Vision
-from more_itertools import first, flatten
+from docint.hierarchy import Hierarchy
+from docint.util import read_config_from_disk
 
 # from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -25,7 +29,8 @@ DIGIT_LANG_DICT = {}
 
 
 def format_lang_date(dt, lang, pattern_str):
-    dt_str = format_date(dt, format=pattern_str, locale=lang)
+    loc_lang = 'kok' if lang == 'gom' else lang
+    dt_str = format_date(dt, format=pattern_str, locale=loc_lang)
     # digits are not translated by babel
 
     lang_dt_str = []
@@ -96,9 +101,10 @@ class MinistryInfo:
 
 
 class OrderGroupInfo:
-    def __init__(self, order_infos, idx, all_idxs, all_ministries):
+    def __init__(self, order_infos, idx, all_en_idxs, all_idxs, all_ministries):
         self.order_infos = order_infos
         self.idx = idx
+        self.all_en_idxs = all_en_idxs
         self.all_idxs = all_idxs
         self.ministry = order_infos[0].ministry
         self.all_ministries = all_ministries
@@ -119,6 +125,7 @@ class OfficerInfo:
         self.officer_id = yml_dict["officer_id"]
         self.image_url = yml_dict.get("image_url", "")
         self.full_name = yml_dict["full_name"]
+        self._first_char = self.full_name[0]
         self.key_infos = []
         self.ministries = {}
         self.url = f'officer-{officer_idx}.html'
@@ -133,7 +140,7 @@ class OfficerInfo:
 
     @property
     def first_char(self):
-        return self.full_name[0]
+        return self._first_char
 
     @property
     def first_ministry(self):
@@ -261,7 +268,8 @@ class KeyInfo:
 class TenureInfo:
     def __init__(self, tenure, post, start_order_url, end_order_url, all_orderid_detailidxs):
         self.tenure = tenure
-        self.post = PostInfo(post)
+        self._dept = post.dept
+        self._role = tenure.role if tenure.role else "Cabinet Minister"
         self.start_order_url = start_order_url
         self.end_order_url = end_order_url
         self.manager_infos_count = -1
@@ -276,12 +284,11 @@ class TenureInfo:
 
     @property
     def dept(self):
-        return self.post.dept
+        return self._dept
 
     @property
     def role(self):
-        role = self.tenure.role
-        return role if role else 'Cabinet Minister'
+        return self._role
 
     @property
     def start_month_year(self):
@@ -347,6 +354,7 @@ class OrderInfo:
         self.num_pages = num_pages
         self.svg_pages = [get_svg_url(idx) for idx in range(num_pages)]
         self.category = getattr(order, 'category', 'Council of Ministers')
+        self._num_details = len(self.order.details)
 
         self.d_page_idxs = [d.page_idx for d in order.details]
         self.first_page_num = self.d_page_idxs[0] + 1
@@ -401,7 +409,7 @@ class OrderInfo:
 
     @property
     def num_details(self):
-        return len(self.order.details)
+        return self._num_details
 
 
 class DetailInfo:
@@ -547,7 +555,8 @@ class DetailPipeInfo:
             self.object_sub_name,
         ]
 
-
+LANG_CODES = [ 'as', 'bn', 'brx', 'doi', 'gu', 'hi', 'kn', 'ks', 'gom', 'mai', 'mni', 'ml', 'mr', 'ne', 'or', 'pa', 'sa', 'sat', 'sd', 'ta', 'te', 'ur' ]
+LANG_CODES = [ 'hi', 'en']
 @Vision.factory(
     "website_language_generator",
     default_config={
@@ -558,10 +567,11 @@ class DetailPipeInfo:
         "output_dir": "output",
         "languages": [],
         "translation_file": "conf/trans.yml",
+        "dept_hierarchy_file": "conf/dept.yml",        
     },
 )
 class WebsiteLanguageGenerator:
-    def __init__(self, conf_dir, conf_stub, officer_info_files, ministry_file, output_dir, languages, translation_file):
+    def __init__(self, conf_dir, conf_stub, officer_info_files, ministry_file, output_dir, languages, translation_file, dept_hierarchy_file):
         self.conf_dir = Path(conf_dir)
         self.conf_stub = conf_stub
         self.officer_info_files = officer_info_files
@@ -569,9 +579,12 @@ class WebsiteLanguageGenerator:
         self.output_dir = Path(output_dir)
         self.languages = languages
         self.translation_file = Path(translation_file)
+        self.dept_hier_path = Path(dept_hierarchy_file)
+        self.dept_hier = read_config_from_disk(self.dept_hier_path)
+        self.depts = [d['name'] for d in self.dept_hier['ministries']]
 
         ### TODO CHANGE THIS
-        self.languages = ['hi', 'en']
+        self.languages = LANG_CODES + ['en']
 
 
         self.officer_info_dict = self.get_officer_infos(self.officer_info_files)
@@ -660,6 +673,7 @@ class WebsiteLanguageGenerator:
             return ''
 
         if text[:2] == text[-2:] == '__':
+            print(text)
             return text
         return self.translations[field][text][lang]
 
@@ -696,7 +710,9 @@ class WebsiteLanguageGenerator:
 
     def translate_tenureinfo(self, tenure_info, lang):
         t, l = tenure_info, copy.copy(tenure_info)
-        l.post = self.translate_postinfo(t.post, lang)
+        l._dept = self.translate_post_field('dept', t.dept, lang)
+        l._role = self.translate_post_field('role', t.role, lang)        
+        #l.post = self.translate_postinfo(t.post, lang)
         l.manager_infos = [self.translate_managerinfo(m, lang) for m in t.manager_infos]
         l.lang = lang
         return l
@@ -713,6 +729,7 @@ class WebsiteLanguageGenerator:
 
         l.full_name = self.translate_name(o.full_name, lang)
         l.key_infos = [self.translate_keyinfo(t, lang) for t in o.key_infos]
+
         l.ministries = dict(
             (self.translate_ministry(m, lang), self.translate_tenureinfos(ts, lang)) for m, ts in o.ministries.items()
         )
@@ -737,13 +754,11 @@ class WebsiteLanguageGenerator:
         l.category = self.translate_label(o.category, lang)
 
         l.details = [self.translate_detailinfo(d, lang) for d in o.details]
+        l._num_details = self.translate_digits(str(o._num_details), lang)
         l.lang = lang
         return l
 
     def build_lang_label_infos(self, labels_trans_dict):
-        # import pdb
-        # pdb.set_trace()
-
         labels = [l for l in labels_trans_dict.keys()]
         labels = [l.replace(',', '').replace(' ', '_').lower() for l in labels]
 
@@ -767,7 +782,7 @@ class WebsiteLanguageGenerator:
     def build_keyinfo(self, tenure):
         post = self.post_dict[tenure.post_id]
         tenure_dates = (tenure.start_date, tenure.end_date)
-        role = post.role if post.role else 'Cabinet Minister'
+        role = tenure.role if tenure.role else 'Cabinet Minister'
         return KeyInfo(post.dept, role, tenure_dates)
 
     def build_tenureinfo(self, tenure):
@@ -775,13 +790,13 @@ class WebsiteLanguageGenerator:
         start_order = self.order_dict[tenure.start_order_id]
         start_page_idx = tenure.get_start_page_idx(start_order)
         start_order_id = tenure.start_order_id
-        start_url = f"order-{start_order_id}.html#Page{start_page_idx + 1}"
+        start_url = f"order-{start_order_id}.html?detail_num={tenure.start_detail_idx+1}"
 
         if tenure.end_order_id:
             end_order = self.order_dict[tenure.end_order_id]
             end_page_idx = tenure.get_end_page_idx(end_order)
             end_order_id = tenure.end_order_id
-            end_url = f"order-{end_order_id}.html#Page{end_page_idx + 1}"
+            end_url = f"order-{end_order_id}.html?detail_num={tenure.end_detail_idx+1}"
         else:
             end_url = ""
 
@@ -923,6 +938,7 @@ class WebsiteLanguageGenerator:
         template = self.env.get_template(f"{entity}.html")
         # l_site_info = self.translate_siteinfo(self.site_info, lang)
         l_site_info = self.lang_label_info_dict[lang]
+        setattr(l_site_info, lang, 'selected')
 
         if entity == "officer":
             l_site_info.page_url = f'officer-{obj.officer_idx}.html'
@@ -981,7 +997,7 @@ class WebsiteLanguageGenerator:
             en_prime_infos.append(prime_officer_info)
 
         html_path = self.get_html_path("prime", "")
-        html_path.write_text(self.render_html("prime", en_prime_infos))
+        #html_path.write_text(self.render_html("prime", en_prime_infos))
 
         for lang in self.languages:
             lang_infos = [self.translate_officerinfo(o, lang) for o in en_prime_infos]
@@ -1002,7 +1018,7 @@ class WebsiteLanguageGenerator:
             en_deputy_infos.append(deputy_officer_info)
 
         html_path = self.get_html_path("deputy", "")
-        html_path.write_text(self.render_html("deputy", en_deputy_infos))
+        #html_path.write_text(self.render_html("deputy", en_deputy_infos))
 
         for lang in self.languages:
             lang_infos = [self.translate_officerinfo(o, lang) for o in en_deputy_infos]
@@ -1018,7 +1034,7 @@ class WebsiteLanguageGenerator:
         order_info = self.build_orderinfo(order)
         self.order_info_dict[order.order_id] = order_info
         html_path = self.get_html_path("order", order.order_id)
-        html_path.write_text(self.render_html("order", order_info))
+        #html_path.write_text(self.render_html("order", order_info))
 
         for lang in self.languages:
             html_path = self.get_html_path("order", order.order_id, lang)
@@ -1031,9 +1047,15 @@ class WebsiteLanguageGenerator:
 
     def gen_officer_page(self, officer_idx, officer_id, tenures):
         def seniority(tenure):
-            # add dept seniority as well
-            post = self.post_dict[tenure.post_id]
-            return (len(post.role_hpath), -tenure.duration_days)
+            roles_seniority = ['Prime Minister', 'Deputy Prime Minister', 'Cabinet Minister', 'Minister of State (Independent Charge)', 'Minister of State', 'Deputy Minister']
+            role_s = roles_seniority.index(tenure.role if tenure.role else 'Cabinet Minister')
+            if '>' in tenure.post_id:
+                dept = tenure.post_id.split('>')[1]
+                dept_idx = self.depts.index(dept) if dept in self.depts else 1000
+            else:
+                dept_idx = 1000
+
+            return (role_s, dept_idx, -tenure.duration_days)
 
         def tenure_ministry(tenure):
             if not self.ministry_infos:
@@ -1072,10 +1094,10 @@ class WebsiteLanguageGenerator:
         # officer_info.officer_idx = officer_idx
 
         self.populate_manager_infos(officer_info)
-        officer_info.tenure_json_str = json.dumps(self.get_tenure_jsons(officer_info), indent=2)
+        officer_info.tenure_json_str = json.dumps(self.get_tenure_jsons(officer_info)) #, indent=2)
 
         html_path = self.get_html_path("officer", officer_info.officer_idx)
-        html_path.write_text(self.render_html("officer", officer_info))
+        #html_path.write_text(self.render_html("officer", officer_info))
 
         for lang in self.languages:
             html_path = self.get_html_path("officer", officer_info.officer_idx, lang)
@@ -1100,7 +1122,7 @@ class WebsiteLanguageGenerator:
         for first_char, o_group in zip(first_chars, officer_groups):
             og_info = OfficerGroupInfo(o_group, first_char, first_chars)
             html_path = self.get_html_path("officers", first_char)
-            html_path.write_text(self.render_html("officers", og_info))
+            #html_path.write_text(self.render_html("officers", og_info))
             officer_group_infos.append(og_info)
         # end for
 
@@ -1125,20 +1147,21 @@ class WebsiteLanguageGenerator:
         order_group_infos = []
         for order_group in order_groups:
             idx = order_group[0].get_ministry_years_str()
-            or_info = OrderGroupInfo(order_group, idx, all_idxs, all_ministries)
+            or_info = OrderGroupInfo(order_group, idx, all_idxs, all_idxs, all_ministries)
             html_path = self.get_html_path("orders", idx)
-            html_path.write_text(self.render_html("orders", or_info))
+            #html_path.write_text(self.render_html("orders", or_info))
             order_group_infos.append(or_info)
 
         print(f"Order groups: {len(order_groups)}")
 
         for lang in self.languages:
             all_lang_idxs = [g[0].get_ministry_years_str(lang) for g in order_groups]
+            all_lang_ministries = [self.translate_ministry(m, lang) for m in  all_ministries ]
             for og in order_group_infos:
                 lang_infos = [self.translate_orderinfo(o, lang) for o in og.order_infos]
                 idx = lang_infos[0].get_ministry_years_str(lang)
-                lang_og_info = OrderGroupInfo(lang_infos, idx, all_lang_idxs, all_ministries)
-                en_idx = og.order_infos[0].get_ministry_years_str('en')
+                en_idx = og.order_infos[0].get_ministry_years_str('en')                
+                lang_og_info = OrderGroupInfo(lang_infos, idx, all_idxs, all_lang_idxs, all_lang_ministries)
                 html_path = self.get_html_path("orders", en_idx, lang)
                 html_path.write_text(self.render_html("orders", lang_og_info, lang))
 
@@ -1147,20 +1170,17 @@ class WebsiteLanguageGenerator:
         if not order.details:
             return
 
-        # import pdb
-        # pdb.set_trace()
-
         order_info = self.order_info_dict[order.order_id]
         detail_pplns_list = [self.build_detail_ppln_infos(d, doc) for d in order.details]
 
         json_detail_list = [d.to_json() for d in order_info.details]
-        order_info.details_json_str = json.dumps(json_detail_list, indent=2)
+        order_info.details_json_str = json.dumps(json_detail_list) #, indent=2)
 
         json_ppln_list = []
         for detail_pplns in detail_pplns_list:
             detail_json_list = [d.to_json() for d in detail_pplns]
             json_ppln_list.append(detail_json_list)
-        order_info.details_ppln_json_str = json.dumps(json_ppln_list, indent=2)
+        order_info.details_ppln_json_str = json.dumps(json_ppln_list) #, indent=2)
 
         html_path = self.get_html_path("details", order.order_id)
 
