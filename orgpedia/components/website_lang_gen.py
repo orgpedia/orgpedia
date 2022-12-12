@@ -25,12 +25,18 @@ from docint.util import read_config_from_disk
 # b /Users/mukund/Software/docInt/docint/pipeline/website_gen.py:164
 
 ROLE_SENIORITY = ['Prime Minister', 'Deputy Prime Minister', 'Cabinet Minister', 'Minister of State (Independent Charge)', 'Minister of State', 'Deputy Minister']
-
 DIGIT_LANG_DICT = {}
+TODATE_DICT = {} # Ugliness
+
+RUN_END_DATE = datetime.date(year=2022, month=12, day=2)
 
 
 def format_lang_date(dt, lang, pattern_str):
-    loc_lang = 'kok' if lang == 'gom' else lang
+    if dt >= RUN_END_DATE:
+        return TODATE_DICT[lang]
+
+    loc_lang = 'kok' if lang == 'gom' else ('hi' if lang == 'sd' else lang)
+
     dt_str = format_date(dt, format=pattern_str, locale=loc_lang)
     # digits are not translated by babel
 
@@ -44,7 +50,10 @@ def format_lang_date(dt, lang, pattern_str):
 
 
 def lang_year(dt, lang):
-    return ''.join(DIGIT_LANG_DICT[c][lang] for c in str(dt))
+    if dt >= RUN_END_DATE.year:
+        return TODATE_DICT[lang]
+    else:
+        return ''.join(DIGIT_LANG_DICT[c][lang] for c in str(dt))
 
 
 class LabelsInfo:
@@ -246,7 +255,6 @@ class ManagerInfo:
 
     @property
     def end_date_str(self):
-        # return self.tenure.end_date.strftime("%d %b %Y")
         return format_lang_date(self.end_date, self.lang, 'd MMMM YYYY')
 
 
@@ -311,7 +319,6 @@ class TenureInfo:
 
     @property
     def end_date_str(self):
-        # return self.tenure.end_date.strftime("%d %b %Y")
         return format_lang_date(self.tenure.end_date, self.lang, 'd MMMM YYYY')
 
     @property
@@ -348,8 +355,9 @@ class OrderInfo:
         def get_svg_url(idx):
             idx += 1
             order_stub = order.order_id.replace(".pdf", "")
-            #file_url = Path('p') / order_stub / f'e-{idx:03d}.svg'
-            cloud_url = f'https://res.cloudinary.com/dvltlchj4/fl_sanitize/moi/{order_stub}/e-{idx:03d}.svg'
+            file_url = Path('p') / order_stub / f'd-{idx:03d}.svg'
+            file_url = f'../{str(file_url)}'
+            cloud_url = f'https://res.cloudinary.com/dvltlchj4/fl_sanitize/moi/{order_stub}/d-{idx:03d}.svg'
             return cloud_url
 
         self.order = order
@@ -572,8 +580,9 @@ class DetailPipeInfo:
             self.object_sub_name,
         ]
 
-LANG_CODES = [ 'as', 'bn', 'brx', 'doi', 'gu', 'hi', 'kn', 'ks', 'gom', 'mai', 'mni', 'ml', 'mr', 'ne', 'or', 'pa', 'sa', 'sat', 'sd', 'ta', 'te', 'ur' ]
-LANG_CODES = [ 'hi', 'bn', 'en']
+LANG_CODES = [ 'as', 'bn', 'brx', 'doi', 'gu', 'hi', 'kn', 'ks', 'gom', 'mai', 'mni', 'ml', 'mr', 'ne', 'or', 'pa', 'sa', 'sat', 'sd', 'ta', 'te', 'ur', 'en' ]
+#LANG_CODES = [ 'en', 'hi']
+
 @Vision.factory(
     "website_language_generator",
     default_config={
@@ -601,7 +610,7 @@ class WebsiteLanguageGenerator:
         self.depts = [d['name'] for d in self.dept_hier['ministries']]
 
         ### TODO CHANGE THIS
-        self.languages = LANG_CODES + ['en']
+        self.languages = LANG_CODES
 
 
         self.officer_info_dict = self.get_officer_infos(self.officer_info_files)
@@ -615,6 +624,9 @@ class WebsiteLanguageGenerator:
         DIGIT_LANG_DICT = self.translations['digits']
 
         self.lang_label_info_dict = self.build_lang_label_infos(self.translations['labels'])
+
+        global TODATE_DICT
+        TODATE_DICT = dict((lang, getattr(ld,'to_date')) for (lang, ld) in self.lang_label_info_dict.items())
 
         self.post_dict = {}
         self.order_dict = {}
@@ -941,6 +953,9 @@ class WebsiteLanguageGenerator:
         return detail_pipes
 
     def get_html_path(self, entity, idx, lang=None):
+        idx = idx.replace(' ', '_')
+
+        print(f'{entity} -> {idx}')
         if lang:
             lang_dir = self.output_dir / lang
             if not lang_dir.exists():
@@ -982,6 +997,7 @@ class WebsiteLanguageGenerator:
             l_site_info.page_url = f'order-{obj.order_id}.html'
             l_site_info.title = f'{l_site_info.order}: ({obj.order_id})'
 
+            ms_str = obj.get_ministry_years_str().replace(' ', '_')
             obj.crumbs = [
                 (l_site_info.home, 'prime.html'),
                 (l_site_info.orders, f'orders-{obj.get_ministry_years_str()}.html'),
@@ -990,7 +1006,8 @@ class WebsiteLanguageGenerator:
 
             return template.render(site=l_site_info, order=obj)
         elif entity == "orders":
-            l_site_info.page_url = f'orders-{obj.idx}.html'
+            obj_idx = obj.idx.replace(' ', '_')
+            l_site_info.page_url = f'orders-{obj_idx}.html'
             l_site_info.title = f'{l_site_info.orders} ({obj.idx})'
             obj.crumbs = [(l_site_info.home, 'prime.html'), (l_site_info.orders, 'orders.html')]
 
