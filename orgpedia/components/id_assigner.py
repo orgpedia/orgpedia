@@ -10,7 +10,6 @@ from docint.util import load_config, read_config_from_disk
 from docint.vision import Vision
 from enchant import request_pwl_dict
 from more_itertools import first
-from pydantic import BaseModel
 
 from ..extracts.orgpedia import OfficerID, OfficerIDNotFoundError
 

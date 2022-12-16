@@ -2,7 +2,7 @@ import datetime
 import json
 import logging
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from itertools import groupby
 from operator import attrgetter
@@ -101,10 +101,11 @@ class DetailInfo:
         "conf_dir": "conf",
         "conf_stub": "tenure_builder",
         "ministry_file": "conf/ministries.yml",
+        "default_role": "Cabinet Minister",
     },
 )
 class TenureBuilder:
-    def __init__(self, conf_dir, conf_stub, ministry_file):
+    def __init__(self, conf_dir, conf_stub, ministry_file, default_role):
         self.conf_dir = conf_dir
         self.conf_stub = conf_stub
         self.ministry_path = Path(ministry_file)
@@ -125,6 +126,8 @@ class TenureBuilder:
         self.lgr.addHandler(stream_handler)
         self.file_handler = None
         self.curr_tenure_idx = -1
+        self.default_role = default_role
+        self.officer_start_date_dict = defaultdict(list)
 
     def add_log_handler(self):
         handler_name = f"{self.conf_stub}.log"
@@ -212,8 +215,12 @@ class TenureBuilder:
                 self.lgr.debug(roleError.msg)
                 errors.append(roleError)
 
-            role = max(roles_counter, key=roles_counter.get, default='Cabinet Minister')
+            role = max(roles_counter, key=roles_counter.get, default=self.default_Role)
             all_order_infos = [(i.order_id, i.detail_idx) for i in start_info.all_infos]
+
+            osd_key = f'{start_info.officer_id}-{start_info.start_date}'
+            officer_start_date_idx = len(self.officer_start_date_dict[osd_key])
+
             return Tenure(
                 tenure_idx=self.curr_tenure_idx,
                 officer_id=start_info.officer_id,
@@ -226,6 +233,7 @@ class TenureBuilder:
                 end_detail_idx=end_detail_idx,
                 role=role,
                 all_order_infos=all_order_infos,
+                officer_start_date_idx=officer_start_date_idx,
             )
 
         def get_postids(infos):

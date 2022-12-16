@@ -8,7 +8,6 @@ from docint.data_error import DataError
 from docint.hierarchy import Hierarchy, MatchOptions
 from docint.para import TextConfig
 from docint.region import Region
-from docint.span import Span
 from docint.vision import Vision
 
 from ..extracts.orgpedia import Post

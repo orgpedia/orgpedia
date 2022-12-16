@@ -326,13 +326,13 @@ class OrderDetail(Region):
             return [w.word_idx for w in post.words]
 
         shape_info = {'detail': self.get_box_to_svg()}
-        idx_info = {'officer': idxs(self.officer),
-                    'continues_posts': list(set(flatten([ idxs(p) for p in self.continues]))),
-                    'assumes_posts': list(set(flatten([ idxs(p) for p in self.assumes]))),
-                    'relinquishes_posts': list(set(flatten([ idxs(p) for p in self.relinquishes]))),
-                    }
+        idx_info = {
+            'officer': idxs(self.officer),
+            'continues_posts': list(set(flatten([idxs(p) for p in self.continues]))),
+            'assumes_posts': list(set(flatten([idxs(p) for p in self.assumes]))),
+            'relinquishes_posts': list(set(flatten([idxs(p) for p in self.relinquishes]))),
+        }
         return {'shapes': shape_info, 'idxs': idx_info}
-    
 
 
 class IncorrectOrderDateError(DataError):
@@ -396,6 +396,7 @@ class Tenure(BaseModel):
     tenure_idx: int
     officer_id: str
     post_id: str
+    officer_start_date_idx: int = -1
 
     start_date: datetime.date
     end_date: datetime.date
@@ -453,6 +454,10 @@ class Tenure(BaseModel):
             f'start_order: {self.start_order_id}, end_order: {self.end_order_id}}}'
         )
         return j
+
+    def get_tenure_id(self):
+        d = str(self.start_date).replace('-', '')
+        return f'{self.officer_id}-{d}-{self.officer_start_date_idx}'
 
 
 class OfficerID(BaseModel):

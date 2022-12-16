@@ -17,7 +17,6 @@ from docint.util import find_date, load_config, read_config_from_disk
 from docint.vision import Vision
 from docint.vocab import Vocab
 from docint.word_line import words_in_lines
-from enchant import request_pwl_dict
 from more_itertools import first
 
 from ..extracts.orgpedia import (
@@ -85,8 +84,6 @@ class TableOrderBuidler:
         self.ignore_unmatched = set(i.split("-"))
 
         self.vocab = Vocab(self.dict_file.read_text().split('\n'))
-        # self.dictionary = request_pwl_dict(str(self.dict_file))
-
         self.unmatched_ctr = Counter()
         self.punct_tbl = str.maketrans(punctuation, " " * len(punctuation))
 
@@ -496,7 +493,7 @@ class TableOrderBuidler:
         table_role = 'Cabinet Minister'
 
         for page_idx, table_idx, row_idx, row, detail_idx in self.iter_rows(doc):
-            doc_verb = self.get_verb(doc, page_idx)  ## TODO THIS IS VERY SLOW, do this one for page
+            doc_verb = self.get_verb(doc, page_idx)  # TODO THIS IS VERY SLOW, do this per page
             table_title = doc.pages[page_idx].tables[table_idx].title
             if table_title:
                 table_title = table_title.raw_text().strip()

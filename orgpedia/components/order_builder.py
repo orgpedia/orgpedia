@@ -15,11 +15,11 @@ from more_itertools import first
 from ..extracts.orgpedia import IncorrectOrderDateError, Officer, Order, OrderDateNotFoundErrror, OrderDetail
 
 """
-# TODO: 
+# TODO:
 1. Can we create a common list of words to be ignored"
 2. Do we need to colors here, or that can be separate component that just prints the values ? (Thinking alound)
 3. Need a name parser and name finder
-4. merge the post_info finder with this, by moving 
+4. merge the post_info finder with this, by moving
 5. consolidate order date finding in a single class
 6. need a clear way of finalizing what goes in info and what goes in debug
 7. need a clear way of testing objects and adding errors, handling ignores, writing log
