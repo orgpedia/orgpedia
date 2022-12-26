@@ -433,6 +433,12 @@ class Tenure(BaseModel):
         s += f' D: {self.duration_days}'
         return s
 
+    def __contains__(self, dt):
+        if not isinstance(dt, type(self.start_date)):
+            raise ValueError(f'Incorrect type for date {type(dt)}')
+
+        return self.start_date <= dt < self.end_date
+
     def overlap_days(self, tenure):
         min_end = min(tenure.end_date, self.end_date)
         max_start = max(tenure.start_date, self.start_date)

@@ -110,12 +110,14 @@ class TenureBuilder:
         self.conf_stub = conf_stub
         self.ministry_path = Path(ministry_file)
 
+        self.first_orders_dict = {}
         if self.ministry_path.exists():
             self.ministry_dict = yaml.load(self.ministry_path.read_text(), Loader=yaml.FullLoader)
             for m in self.ministry_dict["ministries"]:
                 s, e = m["start_date"], m["end_date"]
                 m["start_date"] = parser.parse(s).date()
                 m["end_date"] = parser.parse(e).date() if e != "today" else datetime.date.today()
+                self.first_orders_dict[m["first_order_id"]] = m["start_date"]
         else:
             self.ministry_dict = {}
 
@@ -149,7 +151,7 @@ class TenureBuilder:
                 return False
 
             y = order.date.year
-            return False if (y < 1947 or y > 2021) else True
+            return False if (y < 1947 or y > 2033) else True
 
         def iter_posts(detail):
             if not detail.officer.officer_id:
@@ -165,9 +167,16 @@ class TenureBuilder:
 
         def build_info(detail, verb, post):
             role = post.role_hpath[-1] if post.role_hpath else None
+
+            order_date = order.date
+            # if order.order_id in self.first_orders_dict:
+            #     order_date = self.first_orders_dict[order.order_id]
+            #     order.date = order_date
+            #     print(f'Changing {order.date} -> {order_date}')
+
             return DetailInfo(
                 order.order_id,
-                order.date,
+                order_date,
                 detail.detail_idx,
                 detail.officer.officer_id,
                 verb,
@@ -177,14 +186,18 @@ class TenureBuilder:
                 [],
             )
 
-        if order.order_id == "1_Upload_2830.pdf":
-            print("Found It")
+        if order.order_id == "1_Upload_3296.pdf":
+            pass
 
         if not valid_date(order):
             return []
 
         # remove details with identical officer_ids
         dup_o_ids = get_duplicates(d.officer.officer_id for d in order.details)
+
+        if dup_o_ids:
+            print(f'Duplicate order_ids: {order.order_id} {dup_o_ids}')
+
         v_details = [d for d in order.details if d.officer.officer_id not in dup_o_ids]
 
         return [build_info(d, v, p) for d in v_details for (v, p) in iter_posts(d)]
@@ -215,11 +228,12 @@ class TenureBuilder:
                 self.lgr.debug(roleError.msg)
                 errors.append(roleError)
 
-            role = max(roles_counter, key=roles_counter.get, default=self.default_Role)
+            role = max(roles_counter, key=roles_counter.get, default=self.default_role)
             all_order_infos = [(i.order_id, i.detail_idx) for i in start_info.all_infos]
 
-            osd_key = f'{start_info.officer_id}-{start_info.start_date}'
+            osd_key = f'{start_info.officer_id}-{start_info.order_date}'
             officer_start_date_idx = len(self.officer_start_date_dict[osd_key])
+            self.lgr.info(f'\t\tNEW T: [{start_info.officer_id},{start_info.order_date}->{end_order_id},{end_date}]')
 
             return Tenure(
                 tenure_idx=self.curr_tenure_idx,
@@ -301,6 +315,8 @@ class TenureBuilder:
 
         detail_infos = sorted(detail_infos, key=lambda i: (i.order_date, i.verb_code, i.order_id))
         self.lgr.info(f"\n## Processing Officer: {officer_id} #detailpost_infos: {len(detail_infos)}")
+        self.lgr.info(f"\n\tOrders: {set(d.order_id for d in detail_infos)}")
+
 
         postid_info_dict, officer_tenures, prev_ministry = {}, [], None
         for order_id, order_infos in groupby(detail_infos, key=attrgetter("order_id")):

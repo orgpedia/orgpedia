@@ -4,6 +4,9 @@ import functools
 import json
 import logging
 import sys
+import calendar
+import string
+import gzip
 from collections import Counter
 from itertools import groupby
 from operator import attrgetter, itemgetter
@@ -27,47 +30,55 @@ from more_itertools import first, flatten
 
 # b /Users/mukund/Software/docInt/docint/pipeline/website_gen.py:164
 
-ROLE_SENIORITY = [
-    'Director General of Police',
-    'Additional Director General of Police',
-    'Inspector General of Police',
-    'Additional Inspector General of Police',
-    'Assistant Inspector General of Police',
-    'Deputy Inspector General of Police',
-    'Commissioner',
-    'Joint Commissioner of Police',
-    'Additional Commissioner',
-    'Deputy Commissioner of Police',
-    'Additional Deputy Commissioner of Police',
-    'Assistant Commissioner of Police',
-    'Director',
-    'Deputy Director',
-    'Assistant Director',
-    'Principal',
-    'Vice Principal',
-    'Chief Complaints and Enquiry Officer',
-    'CHIEF SECURITY OFFICER',
-    'Police Inspector',
-    'Vice Chancellor',
-    'Pro Vice Chancellor',
-    'Personal Security Officer',
-    'Commandant',
-    'Deputy Commandant',
-    'Assistant Commandant (Adjudant)',
-    'Assistant Commandant (Quarter Master)',
-    'Assistant Commandant',
-    'Superintendent of Police',
-    'Additional Superintendent of Police',
-    'Assistant Superintendent of Police',
-    'Deputy Superintendent of Police',
-    'Circle Officer',
-    'Station House Officer',
-]
+# ROLE_SENIORITY = [
+#     'Director General of Police',
+#     'Additional Director General of Police',
+#     'Inspector General of Police',
+#     'Additional Inspector General of Police',
+#     'Assistant Inspector General of Police',
+#     'Deputy Inspector General of Police',
+#     'Commissioner',
+#     'Joint Commissioner of Police',
+#     'Additional Commissioner',
+#     'Deputy Commissioner of Police',
+#     'Additional Deputy Commissioner of Police',
+#     'Assistant Commissioner of Police',
+#     'Director',
+#     'Deputy Director',
+#     'Assistant Director',
+#     'Principal',
+#     'Vice Principal',
+#     'Chief Complaints and Enquiry Officer',
+#     'CHIEF SECURITY OFFICER',
+#     'Police Inspector',
+#     'Vice Chancellor',
+#     'Pro Vice Chancellor',
+#     'Personal Security Officer',
+#     'Commandant',
+#     'Deputy Commandant',
+#     'Assistant Commandant (Adjudant)',
+#     'Assistant Commandant (Quarter Master)',
+#     'Assistant Commandant',
+#     'Superintendent of Police',
+#     'Additional Superintendent of Police',
+#     'Assistant Superintendent of Police',
+#     'Deputy Superintendent of Police',
+#     'Circle Officer',
+#     'Station House Officer',
+# ]
 
-# ROLE_SENIORITY = ['Prime Minister', 'Deputy Prime Minister', 'Cabinet Minister', 'Minister of State (Independent Charge)', 'Minister of State', 'Deputy Minister']
+ROLE_SENIORITY = [
+    'Prime Minister',
+    'Deputy Prime Minister',
+    'Cabinet Minister',
+    'Minister of State (Independent Charge)',
+    'Minister of State',
+    'Deputy Minister',
+]
 DIGIT_LANG_DICT = {}
 TODATE_DICT = {}  # Ugliness
 
+RUN_START_DATE = datetime.date(year=1947, month=8, day=15)
 RUN_END_DATE = datetime.date(year=2022, month=12, day=2)
 
 
@@ -113,6 +124,7 @@ class MinistryInfo:
         self.prime_name = yml_dict['pm']
         self.pm_id = yml_dict['pm_officer_id']
         self.deputy_pms = yml_dict.get('deputy_pms', [])
+        self.lang = 'en'
         for deputy_pm in self.deputy_pms:
             deputy_pm['start_date'] = parser.parse(deputy_pm['start_date']).date()
             de = deputy_pm['end_date']
@@ -126,8 +138,21 @@ class MinistryInfo:
     def end_year(self):
         return self.end_date.year
 
+    @property
+    def period_str(self):
+        s_date_str = format_lang_date(self.start_date, self.lang, 'd MMMM YYYY')
+        e_date_str = format_lang_date(self.end_date, self.lang, 'd MMMM YYYY')
+        return f'{s_date_str} - {e_date_str}'
+
     def has_date(self, dt):
         return self.start_date <= dt < self.end_date
+
+    def get_deputy_pm_ids(self, dt):
+        deputy_pm_ids = []
+        for d in self.deputy_pms:
+            if d['start_date'] <= dt < d['end_date']:
+                deputy_pm_ids.append(d['officer_id'])
+        return deputy_pm_ids
 
     @classmethod
     def get_tenure_date_pairs(cls, ministries, is_deputy=False):
@@ -239,6 +264,10 @@ class OfficerInfo:
         lang_pairs = [f'{lang_year(s, l)} - {lang_year(e, l)}' for (s, e) in dps]
         return ', '.join(lang_pairs)
 
+    @property
+    def slo(self):
+        return (len(self.ministries) * 2) - 1
+
     def get_searchdoc_dict(self):
         doc = {}
         doc["idx"] = self.officer_idx
@@ -333,6 +362,11 @@ class TenureInfo:
     @property
     def tenure_idx(self):
         return self.tenure.tenure_idx
+
+    @property
+    def tenure_start_date_idx(self):
+        ds = str(self.tenure.start_date).replace('-', '')
+        return f'{ds}-{self.tenure.officer_start_date_idx}'
 
     @property
     def dept(self):
@@ -623,6 +657,208 @@ class DetailPipeInfo:
         ]
 
 
+class CabinetInfo:
+    # def __init__(self, ministry_info, date, tenures):
+    #     self.ministry_info = ministry_info
+    #     self.date = ate
+    #     self.ministers = []
+    #     self.name = ministry_info.name
+
+    #     if len(tenures) == 0:
+    #         print(f'Empty cabinet for {date}')
+
+    #     def get_dept_id(post_id):
+    #         if '>' in post_id:
+    #             return post_id.split('>')[1]
+    #         else:
+    #             return ''
+
+    #     sorted_tenures = sorted(tenures, key=attrgetter('officer_id'))
+    #     for offi_id, offi_tenures in groupby(sorted_tenures, key=attrgetter('officer_id')):
+    #         posts = [(get_dept_id(t.post_id), t.role) for t in offi_tenures]
+    #         self.ministers.append({'officer_id': offi_id, 'posts': posts})
+
+    def __init__(
+        self, date, ministry_idx, ministry_date_idxs, deputy_pm_idxs, composition_idxs, key_info_idxs, ministers_idxs
+    ):
+        self.date = date
+        self.ministry_idx = ministry_idx
+        self.ministry_date_idxs = ministry_date_idxs
+        self.deputy_pm_idxs = deputy_pm_idxs
+        self.composition_idxs = composition_idxs
+        self.key_info_idxs = key_info_idxs
+        self.ministers_idxs = ministers_idxs
+
+    def trans_num(self, num):
+        return ''.join(self.idx2str['digits'][int(c)] for c in str(num))
+
+    @property
+    def pm_image_url(self):
+        pm_idx = self.ministers_idxs[0][0]
+        offi_list = self.idx2str['offi']
+        return offi_list[pm_idx][2]
+
+    @property
+    def pm_url(self):
+        pm_idx = self.ministers_idxs[0][0]
+        offi_list = self.idx2str['offi']
+        return offi_list[pm_idx][1]
+
+    @property
+    def pm_name(self):
+        pm_idx = self.ministers_idxs[0][0]
+        offi_list = self.idx2str['offi']
+        return offi_list[pm_idx][0]
+
+    @property
+    def deputy_pms(self):
+        offi_list = self.idx2str['offi']
+        return [offi_list[idx][0] for idx in self.deputy_pm_idxs]
+
+    @property
+    def composition(self):
+        role_list = self.idx2str['role']
+        return [(role_list[idx], self.trans_num(cnt)) for (idx, cnt) in self.composition_idxs]
+
+    @property
+    def key_info(self):
+        offi_list = self.idx2str['offi']
+        dept_list = self.idx2str['dept']
+        return [(offi_list[o][0], dept_list[d]) for (o, d) in self.key_info_idxs]
+
+    @property
+    def ministry(self):
+        mini_list = self.idx2str['mini']
+        return mini_list[self.ministry_idx]
+
+    @property
+    def name(self):
+        return self.ministry
+
+    @property
+    def period_str(self):
+        s_y, s_m, s_d = self.ministry_date_idxs[0]
+        e_y, e_m, e_d = self.ministry_date_idxs[1]
+
+        ss_y = ''.join(self.idx2str['digits'][int(c)] for c in str(s_y))
+        ss_d = ''.join(self.idx2str['digits'][int(c)] for c in str(s_d))
+        ss_m = self.idx2str['months'][s_m]
+
+        se_y = ''.join(self.idx2str['digits'][int(c)] for c in str(e_y))
+        se_d = ''.join(self.idx2str['digits'][int(c)] for c in str(e_d))
+        se_m = self.idx2str['months'][e_m]
+        return f'{ss_d} {ss_m} {ss_y} - {se_d} {se_m} {se_y}'
+
+    @property
+    def ministers(self):
+        offi_list = self.idx2str['offi']
+        dept_list = self.idx2str['dept']
+        role_list = self.idx2str['role']
+
+        def get_offi_info(idx):
+            o = offi_list[idx]
+            return o[0], o[1], o[2]
+
+        def get_post_str(post_idxs):
+            post_strs = [f'{dept_list[d]}[{role_list[r]}]' for (d, r) in post_idxs]
+            return '<br>'.join(post_strs[:3]), '<br>'.join(post_strs[3:])
+
+        ministers_strs = []
+        for [offi_idx, post_idxs] in self.ministers_idxs:
+            name, url, image_url = get_offi_info(offi_idx)
+            short_post_str, long_post_str = get_post_str(post_idxs)
+            ministers_strs.append(
+                {
+                    'name': name,
+                    'url': url,
+                    'image_url': image_url,
+                    'short_post_str': short_post_str,
+                    'long_post_str': long_post_str,
+                }
+            )
+        return ministers_strs
+
+    @classmethod
+    def get_json_idxs(cls, cabinet_infos):
+        cabinet_idxs, date_idxs = [], []
+        for c in cabinet_infos:
+            date_idxs.append((c.date - RUN_START_DATE).days)
+            cabinet_idxs.append(
+                [
+                    c.ministry_idx,
+                    c.ministry_date_idxs,
+                    c.deputy_pm_idxs,
+                    c.composition_idxs,
+                    c.key_info_idxs,
+                    c.ministers_idxs,
+                ]
+            )
+        date_idxs.append((RUN_END_DATE - RUN_START_DATE).days);
+        return cabinet_idxs, date_idxs
+
+    # @property
+    # def period_str(self):
+    #     s_date_str = format_lang_date(self.ministry_info.start_date, self.lang, 'd MMMM YYYY')
+    #     e_date_str = format_lang_date(self.ministry_info.end_date, self.lang, 'd MMMM YYYY')
+    #     return f'{s_date_str} - {e_date_str}'
+
+    # def get_ministers_idxs(self, offi_dict, dept_dict, role_dict, mini_dict, officer_info_dict):
+    #     def get_min_role(m):
+    #         # returns the role and the its index
+    #         return min([(role_dict[r], r) for _, r in m['posts']], key=itemgetter(0))
+
+    #     def get_min_dept(m):
+    #         # returns the role and the its index
+    #         return min([(dept_dict[d], d) for d, _ in m['posts']], key=itemgetter(0))
+
+    #     def get_min_idx(m):
+    #         min_role_idx, _ = get_min_role(m)
+    #         min_dept_idx, _ = get_min_dept(m)
+    #         return (min_role_idx, min_dept_idx)
+
+    #     if len(self.ministers) == 0:
+    #         return []
+
+    #     self.sorted_ministers = sorted(self.ministers, key=get_min_idx)
+    #     minister_idxs = []
+    #     for minister in self.sorted_ministers:
+    #         post_idxs = [[dept_dict[d], role_dict[r]] for (d, r) in minister['posts']]
+    #         offi_idx = offi_dict[minister['officer_id']]
+    #         minister_idxs.append([offi_idx, post_idxs])
+
+    #     # calculate composition
+    #     role_counter = Counter(get_min_role(m)[1] for m in self.sorted_ministers)
+    #     self.composition = [(r, role_counter[r]) for r in ROLE_SENIORITY[1:] if role_counter[r] > 0]
+
+    #     first_role, first_idx = get_min_role(self.sorted_ministers[0])
+    #     is_first_pm = True if first_idx == 0 else False
+    #     deputy_pm_ids = self.ministry_info.get_deputy_pm_ids(self.date)
+    #     deputy_pm_idxs = [offi_dict[d_id] for d_id in deputy_pm_ids]
+
+    #     key_ministers = self.sorted_ministers[1:6] if first_pm else self.sorted_ministers[0:5]
+
+    #     self.key_info = [(officer_info_dict[m['officer_id']].full_name, get_min_dept(m)[1]) for m in key_ministers]
+    #     self.key_idxs = [(offi_dict[m['officer_id']], get_min_dept(m)[0]) for m in key_ministers]
+    #     # add prime minister please
+    #     return [mini_dict[self.name], deputy_pm_idxs, minister_idxs]
+
+    # def populate_officer_info(self, officer_info_dict):
+    #     def get_post_str(dept, role):
+    #         pStr = dept if not role else f"{dept}[{role}]"
+    #         pStr = "" if pStr is None else pStr
+    #         pStr = f'<p class="text-sm font-normal leading-4">{pStr}</p>'
+    #         return pStr
+
+    #     for minister in self.sorted_ministers:
+    #         offi_info = officer_info_dict[minister['officer_id']]
+    #         minister['name'] = offi_info.full_name
+    #         minister['url'] = offi_info.url
+    #         minister['image_url'] = offi_info.image_url
+    #         post_strs = [get_post_str(d, r) for (d, r) in minister['posts']]
+    #         minister['short_post_str'] = '\n'.join(post_strs[:3])
+    #         minister['long_post_str'] = '\n'.join(post_strs[3:])
+
+
 LANG_CODES = [
     'as',
     'bn',
@@ -687,12 +923,13 @@ class WebsiteLanguageGenerator:
         if self.dept_hier_path.exists():
             self.dept_hier = read_config_from_disk(self.dept_hier_path)
             self.depts = [d['name'] for d in self.dept_hier['ministries']]
+            self.depts.append('')
         else:
             self.depts = []
 
         ### TODO CHANGE THIS, to read from input file
         self.languages = LANG_CODES
-        self.languages = []
+        self.languages = ['en', 'hi']
 
         self.officer_info_dict = self.get_officer_infos(self.officer_info_files)
         print(f"#Officer_info: {len(self.officer_info_dict)}")
@@ -881,6 +1118,64 @@ class WebsiteLanguageGenerator:
         l.lang = lang
         return l
 
+    def translate_cabinetinfo(self, cabinet_info, lang):
+        def t_dept(dept):
+            return self.translate_post_field('dept', dept, lang)
+
+        def t_role(role):
+            return self.translate_post_field('role', role, lang)
+
+        def get_post_str(dept, role):
+            dept, role = t_dept(dept), t_role(role)
+            pStr = dept if not role else f"{dept}[{role}]"
+            pStr = "" if pStr is None else pStr
+            pStr = f'<p class="text-sm font-normal leading-4">{pStr}</p>'
+            return pStr
+
+        c, l = cabinet_info, copy.copy(cabinet_info)
+        l.lang = lang
+
+        l.name = self.translate_ministry(c.name, lang)
+        l_sorted_ministers = []
+        for m in c.sorted_ministers:
+            l_m = {}
+            l_m['name'] = self.translate_name(m['name'], lang)
+            l_m['url'] = m['url']
+            l_m['image_url'] = m['image_url']
+            posts = [get_post_str(d, r) for (d, r) in m['posts']]
+            l_m['short_post_str'] = '\n'.join(posts[:3])
+            l_m['long_post_str'] = '\n'.join(posts[3:])
+            l_sorted_ministers.append(l_m)
+        l.sorted_ministers = l_sorted_ministers
+        l.key_info = [(self.translate_name(n, lang), t_dept(d)) for (n, d) in c.key_info]
+        l.composition = [(t_role(r), self.translate_digits(str(c), lang)) for (r, c) in c.composition if c > 0]
+        return l
+
+    def translate_months(self, lang):
+        def get_month(month_idx):
+            dt = datetime.date(year=2022, month=month_idx, day=1)
+            dt_str = format_date(dt, format='d MMMM YYYY', locale=loc_lang)
+            return dt_str.split()[1]
+
+        loc_lang = 'kok' if lang == 'gom' else ('hi' if lang == 'sd' else lang)
+        return [''] + [get_month(m) for m in range(1, 13)]
+
+    def translate_idx2str(self, idx2str, lang):
+        def t_dept(dept):
+            return self.translate_post_field('dept', dept, lang)
+
+        def t_role(role):
+            return self.translate_post_field('role', role, lang)
+
+        l_idx2str = {}
+        l_idx2str['offi'] = [[self.translate_name(n, lang), u, i] for (n, u, i) in idx2str['offi']]
+        l_idx2str['dept'] = [t_dept(d) for d in idx2str['dept']]
+        l_idx2str['role'] = [t_role(r) for r in idx2str['role']]
+        l_idx2str['mini'] = [self.translate_ministry(m, lang) for m in idx2str['mini']]
+        l_idx2str['digits'] = [self.translations['digits'][c][lang] for c in idx2str['digits']]
+        l_idx2str['months'] = self.translate_months(lang)
+        return l_idx2str
+
     def build_lang_label_infos(self, labels_trans_dict):
         labels = [l for l in labels_trans_dict.keys()]
         labels = [l.replace(',', '').replace(' ', '_').lower() for l in labels]
@@ -975,6 +1270,7 @@ class WebsiteLanguageGenerator:
         for (ministry_idx, (ministry, tenures)) in enumerate(officer_info.ministries.items()):
             for tenure_info in tenures:
                 t_json = {'ministry': ministry}
+                t_json['tenure_start_date_idx'] = f'{tenure_info.tenure_start_date_idx}'
                 t_json['tenure_idx'] = f'{tenure_info.tenure_idx}'
                 t_json['ministry_idx'] = ministry_idx
                 t_json['dept'] = f'{tenure_info.dept}'
@@ -1045,6 +1341,114 @@ class WebsiteLanguageGenerator:
             # pipe.add_edits(detail_edits, pipe_edits)
         return detail_pipes
 
+    def build_cabinet_info(self, date, date_tenures, str2idx):
+        def get_min_role(m):
+            # returns the role and the its index
+            return min([(role_dict[r], r) for _, r in m['posts']], key=itemgetter(0))
+
+        def get_min_dept(m):
+            # returns the dept and the its index
+            return min([(dept_dict[d], d) for d, _ in m['posts']], key=itemgetter(0))
+
+        def get_min_idx(m):
+            min_role_idx, _ = get_min_role(m)
+            min_dept_idx, _ = get_min_dept(m)
+            return (min_role_idx, min_dept_idx)
+
+        def get_dept_id(post_id):
+            return post_id.split('>')[1] if '>' in post_id else ''
+
+        ministry = self.get_ministry(date)
+        ministry_idx = [idx for (idx, m) in enumerate(self.ministry_infos) if m.name == ministry.name][0]
+        m_s, m_e = (ministry.start_date, ministry.end_date)
+        ministry_date_idxs = [[m_s.year, m_s.month, m_s.day], [m_e.year, m_e.month, m_e.day]]
+
+        [offi_dict, dept_dict, role_dict, mini_dict] = str2idx
+
+        # group tenures by minister
+        tenures = sorted(date_tenures, key=attrgetter('officer_id'))
+        ministers = []
+        for officer_id, offi_tenures in groupby(tenures, key=attrgetter('officer_id')):
+            posts = [(get_dept_id(t.post_id), t.role) for t in offi_tenures]
+            ministers.append({'officer_id': officer_id, 'posts': posts})
+
+        sorted_ministers = sorted(ministers, key=get_min_idx)
+
+        if sorted_ministers:
+            first_idx, _ = get_min_role(sorted_ministers[0])
+            is_first_pm = True if first_idx == 0 else False
+            pm_idx = [offi_dict[ministry.pm_id], [(dept_dict[''], role_dict['Prime Minister'])]]
+            ministers_idxs = [] if is_first_pm else [pm_idx]
+        else:
+            ministers_idxs = []
+
+        for m in sorted_ministers:
+            name_idx = offi_dict[m['officer_id']]
+            post_idxs = [(dept_dict[d], role_dict[r]) for (d, r) in m['posts']]
+            ministers_idxs.append([name_idx, post_idxs])
+
+        # calculate composition
+        role_counter = Counter(get_min_role(m)[1] for m in sorted_ministers)
+        composition_idxs = [(role_dict[r], role_counter[r]) for r in ROLE_SENIORITY[1:] if role_counter[r] > 0]
+
+        deputy_pm_ids = ministry.get_deputy_pm_ids(date)
+        deputy_pm_idxs = [offi_dict[d_id] for d_id in deputy_pm_ids]
+
+        if sorted_ministers:
+            key_ministers = sorted_ministers[1:6] if is_first_pm else sorted_ministers[0:5]
+            key_info_idxs = [(offi_dict[m['officer_id']], get_min_dept(m)[0]) for m in key_ministers]
+        else:
+            key_info_idxs = []
+
+        return CabinetInfo(
+            date, ministry_idx, ministry_date_idxs, deputy_pm_idxs, composition_idxs, key_info_idxs, ministers_idxs
+        )
+
+    def build_cabinet_infos(self, tenures):
+        def get_overlapping_tenures(sorted_tenures, dt, start_idx):
+            print(f'Overlapping: {dt}')
+            s_idx, o_tenures = -1, []
+            for (idx, tenure) in enumerate(sorted_tenures[start_idx:]):
+                if dt in tenure:
+                    if s_idx == -1:
+                        s_idx = idx + start_idx
+                    o_tenures.append(tenure)
+            return s_idx, o_tenures
+
+        # build str2idx
+        offi_dict = dict((oid, idx) for (idx, oid) in enumerate(self.officer_info_dict))
+        dept_dict = dict((d, idx) for (idx, d) in enumerate(self.depts))
+        role_dict = dict((r, idx) for (idx, r) in enumerate(ROLE_SENIORITY))
+        mini_dict = dict((m.name, idx) for (idx, m) in enumerate(self.ministry_infos))
+        role_dict[None] = 2  # cabinet minister
+        str2idx = [offi_dict, dept_dict, role_dict, mini_dict]
+
+        # build idx2str
+        idx2str = {}
+        offi_infos = self.officer_info_dict.values()
+        idx2str['offi'] = [[o.full_name, o.url, o.image_url] for o in offi_infos]
+        idx2str['dept'] = self.depts
+        idx2str['role'] = ROLE_SENIORITY
+        idx2str['mini'] = [m.name for m in self.ministry_infos]
+        idx2str['months'] = list(calendar.month_name)
+        idx2str['digits'] = list(string.digits)
+
+        start_dates = [t.start_date for t in tenures]
+        end_dates = [t.end_date for t in tenures if t.end_date]
+
+        all_dates = sorted(set(start_dates + end_dates))
+        sorted_tenures = sorted(tenures, key=attrgetter('start_date'))
+
+        start_idx, cabinet_infos = 0, []
+        for dt in all_dates:
+            if dt > RUN_END_DATE:
+                continue
+
+            new_sidx, o_tenures = get_overlapping_tenures(sorted_tenures, dt, start_idx)
+            cabinet_infos.append(self.build_cabinet_info(dt, o_tenures, str2idx))
+            start_idx = new_sidx if new_sidx != -1 else start_idx
+        return cabinet_infos, idx2str
+
     def get_html_path(self, entity, idx, lang=None):
         idx = idx.replace(' ', '_')
 
@@ -1060,7 +1464,7 @@ class WebsiteLanguageGenerator:
             else:
                 return self.output_dir / f"{entity}-{idx}.html"
         else:
-            assert entity in ("orders", "prime", "deputy"), f"{idx} is empty for {entity}"
+            assert entity in ("orders", "prime", "deputy", "ministry"), f"{idx} is empty for {entity}"
             if lang:
                 return self.output_dir / lang / f"{entity}.html"
             else:
@@ -1112,6 +1516,10 @@ class WebsiteLanguageGenerator:
             l_site_info.page_url = 'deputy.html'
             l_site_info.title = f'{l_site_info.deputy_prime_ministers}'
             return template.render(site=l_site_info, primes=obj)
+        elif entity == "ministry":
+            l_site_info.page_url = 'ministry.html'
+            l_site_info.title = f'{l_site_info.council_of_ministers}'
+            return template.render(site=l_site_info, cabinet=obj)
         else:
             raise NotImplementedError(f'Not implemented for entity: {entity}')
 
@@ -1373,6 +1781,128 @@ class WebsiteLanguageGenerator:
             )
         )
 
+    def gen_cabinet_page(self, tenures):
+        cabinet_infos, idx2str = self.build_cabinet_infos(tenures)
+        last_cabinet_info = cabinet_infos[-1]
+
+        cabinet_idxs, date_idxs = CabinetInfo.get_json_idxs(cabinet_infos)
+
+        for lang in self.languages:
+            lang_idx2str = self.translate_idx2str(idx2str, lang)
+            last_cabinet_info.idx2str = lang_idx2str
+
+            html_path = self.get_html_path("ministry", '', lang)
+            html_path.write_text(self.render_html("ministry", last_cabinet_info, lang))
+
+            lang_idx2str['ministry_idxs'] = cabinet_idxs
+            lang_idx2str['date_idxs'] = date_idxs
+
+            idx_file = self.output_dir / lang / Path("ministry_idx.json")
+            idx_file.write_text(json.dumps(lang_idx2str))
+
+    def gen_cabinet_page2(self, tenures):
+        def get_overlapping_tenures(sorted_tenures, dt, start_idx):
+            print(f'Overlapping: {dt}')
+            s_idx, e_idx = (-1, -1)
+            for (idx, tenure) in enumerate(sorted_tenures[start_idx:]):
+                print(
+                    f'\t[{start_idx+idx}] {self.officer_info_dict[tenure.officer_id].full_name}-{tenure.post_id.replace("D:__department__>", "")} {tenure.start_order_id}-{tenure.start_date}',
+                    end="",
+                )
+                if dt in tenure and (s_idx == -1):
+                    s_idx = idx + start_idx
+                elif dt not in tenure and s_idx != -1:
+                    e_idx = idx + start_idx
+                    print(f' ** Done {dt}\n')
+                    break
+
+                if s_idx == -1:
+                    print(f' ++ Skip {dt}')
+                else:
+                    print(f' -- Incl {dt}')
+            return (s_idx, e_idx)
+
+        def get_overlapping_tenures2(sorted_tenures, dt, start_idx):
+            print(f'Overlapping: {dt}')
+            s_idx, o_tenures = -1, []
+            for (idx, tenure) in enumerate(sorted_tenures[start_idx:]):
+                print(
+                    f'\t[{start_idx+idx}] {self.officer_info_dict[tenure.officer_id].full_name}-{tenure.post_id.replace("D:__department__>", "")} {tenure.start_order_id}-{tenure.start_date}',
+                    end="",
+                )
+                if dt in tenure:
+                    print(' ++')
+                    if s_idx == -1:
+                        s_idx = idx + start_idx
+                    o_tenures.append(tenure)
+                else:
+                    print(' --')
+            return s_idx, o_tenures
+
+        start_dates = [t.start_date for t in tenures]
+        end_dates = [t.end_date for t in tenures if t.end_date]
+
+        all_dates = sorted(set(start_dates + end_dates))
+        today = datetime.date.today()
+        sorted_tenures = sorted(tenures, key=lambda t: (t.start_date, (today - t.end_date).days))
+
+        for (idx, tenure) in enumerate(sorted_tenures):
+            print(
+                f'ST[{idx}] {self.officer_info_dict[tenure.officer_id].full_name}-{tenure.post_id.replace("D:__department__>", "")} {tenure.start_order_id}-{tenure.start_date} - {tenure.end_date}'
+            )
+
+        offi_dict = dict((oid, idx) for (idx, oid) in enumerate(self.officer_info_dict))
+        dept_dict = dict((d, idx) for (idx, d) in enumerate(self.depts))
+        role_dict = dict((r, idx) for (idx, r) in enumerate(ROLE_SENIORITY))
+        mini_dict = dict((m.name, idx) for (idx, m) in enumerate(self.ministry_infos))
+        role_dict[None] = 2  # cabinet minister
+
+        dict_list = [offi_dict, dept_dict, role_dict, mini_dict]
+
+        print(f'Tenures: {len(sorted_tenures)}')
+
+        s_idx, cabinets = 0, []
+        for dt in all_dates:
+            if dt > RUN_END_DATE:
+                continue
+
+            old_s_idx = s_idx
+            # (s_idx, e_idx) = get_overlapping_tenures(sorted_tenures, dt, s_idx)
+            # o_tenures = sorted_tenures[s_idx:e_idx]
+
+            s_idx, o_tenures = get_overlapping_tenures2(sorted_tenures, dt, s_idx)
+            ministry = self.get_ministry(dt)
+            cabinets.append(CabinetInfo(ministry, dt, o_tenures))
+            if s_idx == -1:
+                s_idx = old_s_idx
+
+        ref_dict = {'offi': [], 'role': [], 'dept': [], 'mini': []}
+
+        offi_infos = self.officer_info_dict.values()
+        ref_dict['offi'] = [[o.full_name, o.url, o.image_url] for o in offi_infos]
+        ref_dict['dept'] = self.depts
+        ref_dict['role'] = ROLE_SENIORITY
+        ref_dict['mini'] = [[m.name, m.period_str] for m in self.ministry_infos]
+        cabinet_idxs = [c.get_ministers_idxs(*dict_list, self.officer_info_dict) for c in cabinets]
+
+        refs_file = self.output_dir / "entity_reference.json"
+        refs_file.write_text(json.dumps(ref_dict))
+
+        last_cabinet_info = cabinets[-1]
+        last_cabinet_info.populate_officer_info(self.officer_info_dict)
+        last_cabinet_info.minister_idxs = cabinet_idxs
+
+        html_path = self.get_html_path("ministry", "")
+        html_path.write_text(self.render_html("ministry", last_cabinet_info))
+
+        for lang in self.languages:
+            html_path = self.get_html_path("ministry", '', lang)
+            lang_cabinet_info = self.translate_cabinetinfo(last_cabinet_info, lang)
+            html_path.write_text(self.render_html("ministry", lang_cabinet_info, lang))
+
+            cabinet_idxs = self.get_cabinet_idxs(cabinets, lang)
+            # write_cabinet_idxs(cabinet_idxs)
+
     def write_search_index(self):
         from lunr import lunr
 
@@ -1411,6 +1941,7 @@ class WebsiteLanguageGenerator:
         self.lgr.info(f"Handling #tenures: {len(self.tenures)}")
 
         if self.has_ministry():
+            self.gen_cabinet_page(self.tenures)
             self.gen_prime_page()
             self.gen_deputy_prime_page()
 
