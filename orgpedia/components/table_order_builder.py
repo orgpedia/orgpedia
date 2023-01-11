@@ -276,15 +276,23 @@ class TableOrderBuidler:
         dept_sgs = self.hierarchy_dict["dept"].find_match(post_str, self.match_options)
         self.lgr.debug(f"dept: {Hierarchy.to_str(dept_sgs)}")
 
+        table_role_sgs = self.hierarchy_dict["role"].find_match(table_role, self.match_options)        
+
         b_post_str = SpanGroup.blank_text(dept_sgs, post_str)
         role_sgs = self.hierarchy_dict["role"].find_match(b_post_str, self.match_options)
 
         self.lgr.debug(f"role: {Hierarchy.to_str(role_sgs)}")
 
+        if any(r for r in role_sgs if r.leaf == 'Prime Minister') and 'ta0.ro0' not in path:
+            # if post_str has 'Will be assisting Prime Minister with '
+            role_sgs = [r for r in role_sgs if r.leaf != 'Prime Minister']
+            assert role_sgs or table_role_sgs
+            self.lgr.debug(f"REMOVAL role: {Hierarchy.to_str(role_sgs)}")
+
         hier_span_groups = dept_sgs + role_sgs
         hier_span_groups = sorted(hier_span_groups, key=op.attrgetter("min_start"))
 
-        table_role_sgs = self.hierarchy_dict["role"].find_match(table_role, self.match_options)
+
 
         role_sg = None
         for span_group in hier_span_groups:

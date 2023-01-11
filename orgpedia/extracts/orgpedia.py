@@ -242,6 +242,10 @@ class OrderDetail(Region):
     def page_idx(self):
         return self.words[0].page_idx
 
+    @property
+    def officer_id(self):
+        return self.officer.officer_id
+
     @classmethod
     def build(
         cls,

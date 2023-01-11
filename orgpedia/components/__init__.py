@@ -12,3 +12,4 @@ from .table_order_builder import TableOrderBuidler
 from .tenure_builder import TenureBuilder
 from .website_gen import WebsiteGenerator
 from .website_lang_gen import WebsiteLanguageGenerator
+from .archive_checker import ArchiveChecker
