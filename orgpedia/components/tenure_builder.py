@@ -25,7 +25,7 @@ class TenureManagerWithLeafRole(DataError):
     def build(cls, tenure, manager_tenures):
         mgrs_id = ", ".join(t.officer_id for t in manager_tenures)
         msg = f"t_id: {tenure.officer_id} mgrs_id: {mgrs_id} post_id: {tenure.post_id}"
-        path = f"te.{tenure.tenure_idx}"
+        path = f"te.{tenure.tenure_id}"
         return TenureManagerWithLeafRole(path=path, msg=msg)
 
 
@@ -33,7 +33,7 @@ class TenureWithNoManager(DataError):
     @classmethod
     def build(cls, tenure):
         msg = f"t_id: {tenure.officer_id} post_id: {tenure.post_id}"
-        path = f"te.{tenure.tenure_idx}"
+        path = f"te.{tenure.tenure_id}"
         return TenureWithNoManager(path=path, msg=msg)
 
 
@@ -217,8 +217,12 @@ class TenureBuilder:
         return None
 
     def build_officer_tenures(self, officer_id, detail_infos):  # noqa C901
+        officer_tenure_idx = -1
+
         def build_tenure(start_info, end_order_id, end_date, end_detail_idx):
-            self.curr_tenure_idx += 1
+            nonlocal officer_tenure_idx
+            # self.curr_tenure_idx += 1
+            officer_tenure_idx += 1
 
             roles = [start_info.role] + [i.role for i in start_info.all_infos]
             roles_counter = Counter(roles)
@@ -234,9 +238,9 @@ class TenureBuilder:
             osd_key = f'{start_info.officer_id}-{start_info.order_date}'
             officer_start_date_idx = len(self.officer_start_date_dict[osd_key])
             self.lgr.info(f'\t\tNEW T: [{start_info.officer_id},{start_info.order_date}->{end_order_id},{end_date}]')
-
             return Tenure(
-                tenure_idx=self.curr_tenure_idx,
+                tenure_id=f'{start_info.officer_id}-{officer_tenure_idx}',
+                tenure_idx=officer_tenure_idx,
                 officer_id=start_info.officer_id,
                 post_id=start_info.post_id,
                 start_date=start_info.order_date,
@@ -317,7 +321,6 @@ class TenureBuilder:
         self.lgr.info(f"\n## Processing Officer: {officer_id} #detailpost_infos: {len(detail_infos)}")
         self.lgr.info(f"\n\tOrders: {set(d.order_id for d in detail_infos)}")
 
-
         postid_info_dict, officer_tenures, prev_ministry = {}, [], None
         for order_id, order_infos in groupby(detail_infos, key=attrgetter("order_id")):
             order_infos = list(order_infos)
@@ -350,7 +353,7 @@ class TenureBuilder:
 
         for tenure in leaf_tenures:
             postid_ts = postid_dict.get(tenure.post_id, [])
-            manager_ts = [t for t in postid_ts if t.tenure_idx != tenure.tenure_idx and tenure.overlaps(t)]
+            manager_ts = [t for t in postid_ts if t.tenure_id != tenure.tenure_id and tenure.overlaps(t)]
 
             leaf_ts = [t for t in manager_ts if t.role in leaf_roles]
             if leaf_ts:
@@ -361,10 +364,10 @@ class TenureBuilder:
             manager_ts = [t for t in manager_ts if t.role not in leaf_roles]
             if not manager_ts:
                 errors.append(TenureWithNoManager.build(tenure))
-            tenure.manager_idxs = [mt.tenure_idx for mt in manager_ts]
+            tenure.manager_ids = [mt.tenure_id for mt in manager_ts]
 
             for manager_tenure in manager_ts:
-                manager_tenure.reportee_idxs.append(tenure.tenure_idx)
+                manager_tenure.reportee_ids.append(tenure.tenure_id)
 
             self.lgr.debug(f"T: {str(tenure)} M: {'|'.join(str(t) for t in manager_ts)}")
         return errors
@@ -413,7 +416,7 @@ class TenureBuilder:
             doc = order_id_doc_dict[tenure.start_order_id]
             doc.tenures.append(tenure)
 
-        self.write_tenures(tenures)
+        # self.write_tenures(tenures)
         self.lgr.info(f"=={doc.pdf_name}.tenure_builder {len(tenures)} {DataError.error_counts(errors)}")
         self.lgr.info("Leaving tenure_builder")
         self.remove_log_handler()

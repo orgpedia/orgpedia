@@ -8,7 +8,7 @@ from docint.data_error import DataError
 from docint.region import Region
 from docint.util import load_config, read_config_from_disk
 from docint.vision import Vision
-from enchant import request_pwl_dict
+from docint.vocab import Vocab
 from more_itertools import first
 
 from ..extracts.orgpedia import OfficerID, OfficerIDNotFoundError
@@ -37,7 +37,7 @@ class OfficerIDInfo(Region):
 
 
 @Vision.factory(
-    "id_assigner",
+    "id_assigner_vocab",
     default_config={
         "conf_dir": "conf",
         "conf_stub": "id_assigner",
@@ -62,7 +62,7 @@ class IDAssigner:
         self.pre_edit = pre_edit
         self.post_id_fields = post_id_fields
         self.cadre_names_dict = {}
-        self.cadre_names_dictionary = {}
+        self.cadre_names_vocab = {}
         self.officerID_dict = {}
 
         for cadre, cadre_file in cadre_file_dict.items():
@@ -75,12 +75,13 @@ class IDAssigner:
 
                 self.officerID_dict[o.officer_id] = o
             self.cadre_names_dict[cadre] = names_dict
+            self.cadre_names_vocab = Vocab(names_dict.keys())
 
-            dictionary_file = self.conf_dir / f"{cadre}.dict"
-            if not dictionary_file.exists():
-                dictionary_file.write_text("\n".join(names_dict.keys()))
+            # dictionary_file = self.conf_dir / f"{cadre}.dict"
+            # if not dictionary_file.exists():
+            #    dictionary_file.write_text("\n".join(names_dict.keys()))
 
-            self.cadre_names_dictionary[cadre] = request_pwl_dict(str(dictionary_file))
+            # self.cadre_names_dictionary[cadre] = request_pwl_dict(str(dictionary_file))
 
         tenure_name_path = self.conf_dir / tenure_name_file
         self.tenure_name_dict = self.load_tenure_name(tenure_name_path)
@@ -153,8 +154,8 @@ class IDAssigner:
         names_dict = self.cadre_names_dict[officer.cadre]
         officer_id = names_dict.get(name_nows, None)
         if not officer_id:
-            names_dictionary = self.cadre_names_dictionary[officer.cadre]
-            suggestion = first(names_dictionary.suggest(name_nows), None)
+            names_vocab = self.cadre_names_vocab[officer.cadre]
+            suggestion = first(names_vocab.suggest(name_nows), None)
             officer_id = names_dict.get(suggestion, None)
 
         errors = []

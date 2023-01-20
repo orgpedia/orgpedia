@@ -13,3 +13,5 @@ from .tenure_builder import TenureBuilder
 from .website_gen import WebsiteGenerator
 from .website_lang_gen import WebsiteLanguageGenerator
 from .archive_checker import ArchiveChecker
+from .tenure_writer import TenureWriter
+from .details_differ import DetailsDiffer

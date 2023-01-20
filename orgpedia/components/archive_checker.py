@@ -7,7 +7,6 @@ import urllib
 import sys
 
 
-
 from pydantic import BaseModel
 
 from docint.util import read_config_from_disk
@@ -18,7 +17,8 @@ from docint.vision import Vision
 
 BLOCKSIZE = 2**10
 
-class ArchiveInfo(BaseModel):
+
+class DocMeta(BaseModel):
     url: str
     download_time: datetime.datetime
     archive_url: str
@@ -105,14 +105,14 @@ class ArchiveChecker:
         self.add_log_handler(doc)
         self.lgr.info(f"archive_checker: {doc.pdf_name}")
 
-        from waybackpy import WaybackMachineCDXServerAPI        
+        from waybackpy import WaybackMachineCDXServerAPI
 
-        doc.add_extra_field("archive_info", ("obj", __name__, "ArchiveInfo"))
+        doc.add_extra_field("archive_info", ("obj", __name__, "DocMeta"))
 
         archive_info_path = self.output_dir / f'{doc.pdf_name}.archive_info.json'
         if archive_info_path.exists():
             archive_info_dict = json.loads(archive_info_path.read_text())
-            doc.archive_info = ArchiveInfo(**archive_info_dict)
+            doc.archive_info = DocMeta(**archive_info_dict)
             return doc
 
         (url, downloaded_time, pdf_path) = self.urls_dict[doc.pdf_name]
@@ -124,7 +124,6 @@ class ArchiveChecker:
         full_url = newest.archive_url
         id_pos = full_url.index(url) - 1
         content_url = full_url[:id_pos] + 'id_' + full_url[id_pos:]
-        
 
         with urllib.request.urlopen(content_url) as f:
             url_sha = get_sha(f)
@@ -132,13 +131,14 @@ class ArchiveChecker:
         with open(doc.pdf_path, 'rb') as f:
             pdf_sha = get_sha(f)
 
-
         sha_matched = url_sha == pdf_sha
-        doc.archive_info = ArchiveInfo(url=url,
-                                       download_time=downloaded_time,
-                                       archive_url=newest.archive_url,
-                                       archive_time=newest.datetime_timestamp,
-                                       sha= pdf_sha,
-                                       sha_matched=sha_matched)
+        doc.archive_info = DocMeta(
+            url=url,
+            download_time=downloaded_time,
+            archive_url=newest.archive_url,
+            archive_time=newest.datetime_timestamp,
+            sha=pdf_sha,
+            sha_matched=sha_matched,
+        )
         archive_info_path.write_text(doc.archive_info.json(indent=2))
         return doc

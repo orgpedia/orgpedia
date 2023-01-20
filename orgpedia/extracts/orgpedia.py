@@ -397,6 +397,7 @@ class Order(Region):
 
 
 class Tenure(BaseModel):
+    tenure_id: str
     tenure_idx: int
     officer_id: str
     post_id: str
@@ -412,8 +413,8 @@ class Tenure(BaseModel):
     end_detail_idx: int = -1
 
     role: str = None
-    manager_idxs: List[int] = []
-    reportee_idxs: List[int] = []
+    manager_ids: List[str] = []
+    reportee_ids: List[str] = []
     all_order_infos: List[Tuple[str, int]] = []
 
     @property

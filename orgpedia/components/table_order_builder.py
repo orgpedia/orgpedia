@@ -276,7 +276,7 @@ class TableOrderBuidler:
         dept_sgs = self.hierarchy_dict["dept"].find_match(post_str, self.match_options)
         self.lgr.debug(f"dept: {Hierarchy.to_str(dept_sgs)}")
 
-        table_role_sgs = self.hierarchy_dict["role"].find_match(table_role, self.match_options)        
+        table_role_sgs = self.hierarchy_dict["role"].find_match(table_role, self.match_options)
 
         b_post_str = SpanGroup.blank_text(dept_sgs, post_str)
         role_sgs = self.hierarchy_dict["role"].find_match(b_post_str, self.match_options)
@@ -291,8 +291,6 @@ class TableOrderBuidler:
 
         hier_span_groups = dept_sgs + role_sgs
         hier_span_groups = sorted(hier_span_groups, key=op.attrgetter("min_start"))
-
-
 
         role_sg = None
         for span_group in hier_span_groups:
