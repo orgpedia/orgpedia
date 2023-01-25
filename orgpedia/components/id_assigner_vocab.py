@@ -47,7 +47,7 @@ class OfficerIDInfo(Region):
         "tenure_name_file": "prime_minister_tenures.yml",
     },
 )
-class IDAssigner:
+class IDAssignerVocab:
     def __init__(
         self,
         conf_dir,
@@ -75,7 +75,7 @@ class IDAssigner:
 
                 self.officerID_dict[o.officer_id] = o
             self.cadre_names_dict[cadre] = names_dict
-            self.cadre_names_vocab = Vocab(names_dict.keys())
+            self.cadre_names_vocab[cadre] = Vocab(names_dict.keys())
 
             # dictionary_file = self.conf_dir / f"{cadre}.dict"
             # if not dictionary_file.exists():
@@ -98,11 +98,14 @@ class IDAssigner:
     def load_tenure_name(self, tenures_file):
         tenure_file_dict = read_config_from_disk(tenures_file)
         tenure_name_dict = {}
-        for tenure in tenure_file_dict.get("tenures", []):
-            s, e = tenure["start"], tenure["end"]
+        for tenure in tenure_file_dict.get("ministries", []):
+            #s, e = tenure["start"], tenure["end"]
+            s, e = tenure["start_date"], tenure["end_date"]            
             sDate = parser.parse(s).date()
-            eDate = parser.parse(e).date() if e != "current" else datetime.date.today()
-            tenure_name_dict[(sDate, eDate)] = tenure["name"]
+            #eDate = parser.parse(e).date() if e != "current" else datetime.date.today()
+            eDate = parser.parse(e).date() if e != "today" else datetime.date.today()                        
+            #tenure_name_dict[(sDate, eDate)] = tenure["name"]
+            tenure_name_dict[(sDate, eDate)] = tenure.get("pm")            
         return tenure_name_dict
 
     def add_log_handler(self, doc):
@@ -155,7 +158,8 @@ class IDAssigner:
         officer_id = names_dict.get(name_nows, None)
         if not officer_id:
             names_vocab = self.cadre_names_vocab[officer.cadre]
-            suggestion = first(names_vocab.suggest(name_nows), None)
+            suggestions = names_vocab.find_texts(name_nows, dist_cutoff=3)
+            suggestion, _ = first(suggestions, (None, None))
             officer_id = names_dict.get(suggestion, None)
 
         errors = []

@@ -5,7 +5,9 @@ import sys
 from operator import attrgetter
 from pathlib import Path
 
+
 import pydantic
+import yaml
 
 from docint.vision import Vision
 from more_itertools import flatten
@@ -29,15 +31,17 @@ from ..extracts.orgpedia import OfficerID, Tenure
         },
         "post_id_fields": [],
         "output_dir": "output",
+        "translations_file": "trans.yml"
     },
 )
 class TenureWriter:
-    def __init__(self, conf_dir, conf_stub, formats, cadre_file_dict, hierarchy_files, post_id_fields, output_dir):
+    def __init__(self, conf_dir, conf_stub, formats, cadre_file_dict, hierarchy_files, post_id_fields, output_dir, translations_file):
         self.conf_dir = Path(conf_dir)
         self.conf_stub = conf_stub
         self.formats = formats
         self.output_dir = Path(output_dir)
         self.hierarchy_files = hierarchy_files
+        self.translations_file = self.conf_dir / translations_file
 
         self.officer_infos = []
         self.officer_id_dict = {}
@@ -52,6 +56,8 @@ class TenureWriter:
             hierarchy_path = self.conf_dir / file_name
             hierarchy = Hierarchy(hierarchy_path)
             self.hierarchy_dict[field] = hierarchy
+
+        self.translations = yaml.load(self.translations_file.read_text(), Loader=yaml.FullLoader)
 
         self.lgr = logging.getLogger(__name__)
         self.lgr.setLevel(logging.DEBUG)
@@ -76,14 +82,14 @@ class TenureWriter:
 
     def get_tenures_header(self):
         keys = Tenure.__fields__.keys()
-        return ['officer_full_name'] + list(keys)
+        return ['officer_name'] + list(keys)
 
     def get_tenures_csv(self, tenures):
         tenure_dicts = []
         for tenure in tenures:
-            full_name = self.officer_id_dict[tenure.officer_id].full_name
+            name = self.officer_id_dict[tenure.officer_id].name
             fields = [(f, getattr(tenure, f)) for f in Tenure.__fields__.keys()]
-            tenure_dicts.append(dict([('officer_full_name', full_name)] + fields))
+            tenure_dicts.append(dict([('officer_name', name)] + fields))
         return tenure_dicts
 
     def pipe(self, docs, **kwargs):
@@ -102,12 +108,21 @@ class TenureWriter:
             csv_writer.writerows(self.get_tenures_csv(self.tenures))
 
         officer_infos_path = self.output_dir / 'officer_infos.json'
+        for officer_info in self.officer_infos:
+            officer_info.language_names = self.translations['names'][officer_info.name]
+        
         self.officer_infos.sort(key=attrgetter('officer_id'))
         officer_infos_path.write_text(json.dumps(self.officer_infos, default=pydantic.json.pydantic_encoder))
 
         post_infos = {}
         for field in self.hierarchy_files:
             post_infos[field] = self.hierarchy_dict[field].to_dict()
+            names = self.hierarchy_dict[field].get_names()
+
+            missing_names = [n for n in names if n not in self.translations[field]]
+            if missing_names:
+                print(f'Unable to find translations for {missing_names}')
+            post_infos['translations_{field}'] = self.translations[field]
 
         (self.output_dir / 'post_infos.json').write_text(json.dumps(post_infos, default=pydantic.json.pydantic_encoder))
         return docs

@@ -489,6 +489,7 @@ class OfficerID(BaseModel):
     home_location: str = ""
     education: str = ""
     method: str = "computed"
+    language_names: Dict[str, str] = {}
 
     # currently not keeping language as that should be a separate process
 

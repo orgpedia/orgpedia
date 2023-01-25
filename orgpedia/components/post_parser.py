@@ -148,82 +148,8 @@ class PostParserOnSentence:
                 errors.append(PostMismatchError(path=path, msg=msg))
         return errors
 
-    def edit_span_groups(posts_groups_dict):
-        continues = posts_groups_dict.get("continues", [])
-        relinquishes = posts_groups_dict.get("relinquishes", [])
-
-        if not (continues and relinquishes):
-            return
-
-        # TODO endswith
-        c_depts = [p.leaf for p in continues if p.root == "__department__"]
-        r_depts = [p.leaf for p in relinquishes if p.root == "__department__"]
-
-        del_idxs = [idx for (idx, dept) in enumerate(c_depts) if dept in r_depts]
-
-        new_continues = [p for (idx, p) in enumerate(continues) if idx in del_idxs]
-        posts_groups_dict["continues"] = new_continues
 
     def build_post_info(self, post_region, hier_span_groups, detail_idx):
-        field_span_groups = [(field, span_group) for (field, sgs) in hier_span_groups.items() for span_group in sgs]
-        field_span_groups.sort(key=lambda tup: tup[1].min_start)
-
-        verb, dept_role_groups_dict = "continues", {}
-        for field, hier_span_group in field_span_groups:
-            if hier_span_group.root == "verb":  # TODO move this to __verb__
-                verb = hier_span_group.leaf
-                verb_span = hier_span_group.spans[0]
-                post_region.add_label(verb_span, "verb", self.text_config)
-            else:
-                dept_role_groups_dict.setdefault(verb, []).append(hier_span_group)
-
-        # is_valid = True
-        post_region_str = post_region.line_text(self.text_config)
-        idx_region_str = post_region.word_idxs_line_text(self.text_config)
-        assert len(post_region_str) == len(idx_region_str)
-
-        posts_dict = {"continues": [], "relinquishes": [], "assumes": []}
-        for post_type, hier_span_groups in dept_role_groups_dict.items():
-            dept_sg, role_sg, spans = None, None, []
-            for hier_span_group in hier_span_groups:
-                if hier_span_group.root == "__role__":
-                    role_sg = hier_span_group
-                    [post_region.add_label(span, "role", self.text_config) for span in hier_span_group]
-                else:
-                    dept_sg = hier_span_group
-                    [
-                        post_region.add_label(span, "dept", self.text_config, suppress_warning=True)
-                        for span in hier_span_group
-                    ]
-                    spans += [span for span in hier_span_group]
-            post_words = post_region.get_words_in_spans(spans)
-            posts_dict[post_type].append(Post.build(post_words, post_region_str, dept_sg, role_sg))
-
-        post_info = PostInfo.build(
-            post_region.words,
-            post_region.word_lines,
-            post_region_str,
-            detail_idx,
-            **posts_dict,
-        )
-        # ident_str = (
-        #    f"{post_region.doc.pdf_name}:{post_region.page.page_idx}>{detail_idx}"
-        # )
-        path = f"pa{post_region.page.page_idx}.or.de{detail_idx}"
-        post_info.errors += self.check_span_groups(dept_role_groups_dict, path)
-
-        log_texts = wrap(post_region_str, width=90)
-        idx_texts, start_idx = [], 0
-        for t in log_texts:
-            idx_texts.append(idx_region_str[start_idx : start_idx + len(t)])  # noqa: E203
-            start_idx += len(t) + 1
-
-        # err_str = post_info.error_counts_str
-        # log_str = "\n\n".join(f"{t}\n{i}" for (t, i) in zip(log_texts, idx_texts))
-        # self.lgr.debug(post_info.to_str(post_region_str, log_str, err_str, path))
-        return post_info
-
-    def build_post_info2(self, post_region, hier_span_groups, detail_idx):
         def build_post(post_fields_dict, post_spans):
             dept_sg = post_fields_dict.get("department", None)
             role_sg = post_fields_dict.get("role", None)
@@ -313,7 +239,7 @@ class PostParserOnSentence:
             self.lgr.debug(f"{field}: {Hierarchy.to_str(match_paths)}")
             # [self.lgr.debug(f"\t{str(mp)}") for mp in match_paths]
         # end for
-        post_info = self.build_post_info2(post_region, match_paths_dict, detail_idx)
+        post_info = self.build_post_info(post_region, match_paths_dict, detail_idx)
         return post_info
 
     def __call__(self, doc):

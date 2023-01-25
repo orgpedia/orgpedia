@@ -13,7 +13,7 @@ import yaml
 from dateutil import parser
 from docint.data_error import DataError
 from docint.vision import Vision
-from more_itertools import flatten
+from more_itertools import flatten, pairwise
 
 from ..extracts.orgpedia import Tenure
 
@@ -64,14 +64,25 @@ class TenureMultipleRolesError(DataError):
         return TenureMultipleRolesError(path=path, msg=msg, roles=roles)
 
 
-class TenureLongTenure(DataError):
+class TenureLongError(DataError):
     duration_days: int
 
     @classmethod
     def build(cls, tenure):
         msg = "Long Tenure " + str(tenure)
         print(msg)
-        return TenureLongTenure(path='', msg=msg, duration_days=tenure.duration_days)
+        return TenureLongError(path='', msg=msg, duration_days=tenure.duration_days)
+
+
+class TenureGapError(DataError):
+    gap_years: int
+
+    @classmethod
+    def build(cls, tenure, gap_years):
+        msg = f"Long Tenure Gap: {gap_years} years " + str(tenure)
+        print(msg)
+        return TenureGapError(path='', msg=msg, gap_years=gap_years)
+    
 
 
 # This should be called DetailPostInfo
@@ -278,6 +289,7 @@ class TenureBuilder:
                 order_posts = set(i.post_id for i in order_infos)
                 ignored_posts = list(active_posts - order_posts)
                 if ignored_posts:
+                    ignored_posts.sort()
                     for post_id in ignored_posts:
                         ignored_info = postid_info_dict[post_id]
                         o_tenures.append(build_tenure(ignored_info, o_id, o_date, d_idx))
@@ -317,7 +329,7 @@ class TenureBuilder:
                 officer_tenures.append(build_tenure(info, "", end_date, -1))
             postid_info_dict.clear()
 
-        detail_infos = sorted(detail_infos, key=lambda i: (i.order_date, i.verb_code, i.order_id))
+        detail_infos = sorted(detail_infos, key=lambda i: (i.order_date, i.verb_code, i.order_id, i.post_id))
         self.lgr.info(f"\n## Processing Officer: {officer_id} #detailpost_infos: {len(detail_infos)}")
         self.lgr.info(f"\n\tOrders: {set(d.order_id for d in detail_infos)}")
 
@@ -341,7 +353,12 @@ class TenureBuilder:
                     end_date = self.ministry_end_date(info.order_date)
                     officer_tenures.append(build_tenure(info, "", end_date, -1))
 
-        errors += [TenureLongTenure.build(t) for t in officer_tenures if t.duration_days > 365 * 6]
+        errors += [TenureLongError.build(t) for t in officer_tenures if t.duration_days > 365 * 6]
+        for (t1, t2) in pairwise(officer_tenures):
+            gap_years = (t2.end_date - t1.start_date).days/365.0
+            if gap_years > 10:
+                print('**** ERROR FOUND ***')
+                errors.append(TenureGapError.build(t2, gap_years))
         return officer_tenures, errors
 
     def compute_manager(self, tenures):

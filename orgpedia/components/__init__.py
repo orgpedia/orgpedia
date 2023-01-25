@@ -15,3 +15,4 @@ from .website_lang_gen import WebsiteLanguageGenerator
 from .archive_checker import ArchiveChecker
 from .tenure_writer import TenureWriter
 from .details_differ import DetailsDiffer
+from .id_assigner_vocab import IDAssignerVocab

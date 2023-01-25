@@ -81,7 +81,7 @@ class IDAssigner:
                 dictionary_file.write_text("\n".join(names_dict.keys()))
 
             self.cadre_names_dictionary[cadre] = request_pwl_dict(str(dictionary_file))
-
+            
         tenure_name_path = self.conf_dir / tenure_name_file
         self.tenure_name_dict = self.load_tenure_name(tenure_name_path)
         special_roles = ["Prime Minister", "P. M.", "P.M"]
@@ -97,11 +97,15 @@ class IDAssigner:
     def load_tenure_name(self, tenures_file):
         tenure_file_dict = read_config_from_disk(tenures_file)
         tenure_name_dict = {}
-        for tenure in tenure_file_dict.get("tenures", []):
+        import pdb
+        pdb.set_trace()
+        for tenure in tenure_file_dict.get("ministries", []):
             s, e = tenure["start"], tenure["end"]
             sDate = parser.parse(s).date()
-            eDate = parser.parse(e).date() if e != "current" else datetime.date.today()
-            tenure_name_dict[(sDate, eDate)] = tenure["name"]
+            #eDate = parser.parse(e).date() if e != "current" else datetime.date.today()
+            eDate = parser.parse(e).date() if e != "today" else datetime.date.today()            
+            #tenure_name_dict[(sDate, eDate)] = tenure.get("name", tenure.get("pm"))
+            tenure_name_dict[(sDate, eDate)] = tenure.get("pm")
         return tenure_name_dict
 
     def add_log_handler(self, doc):

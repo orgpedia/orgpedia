@@ -9,10 +9,11 @@ from docint.vision import Vision
 
 # b /Users/mukund/Software/docInt/docint/pipeline/id_assigner.py:34
 
+class OrderDateDiffError(DataError):
+    pass
 
 class OfficerIDDiffError(DataError):
     pass
-
 
 class PostIDDiffError(DataError):
     pass
@@ -104,8 +105,12 @@ class DetailsDiffer:
             details_path.write_text(first_line + "\n" + details_str + "\n]}")
         else:
             j_order = json.loads(details_path.read_text())
+            if new_dt != j_order['date']:
+                msg = f'{new_dt}->{j_order["date"]}'
+                print(f'{doc.pdf_name}.date: {msg}')
+                errors.append(OrderDateDiffError(path="date", msg=msg))
 
-            ref_lines = j_order['details']  # [self.get_detail_line(d) for d in j_order['details']]
+            ref_lines = j_order['details']
             for detail_idx, (ref, new) in enumerate(zip(ref_lines, new_lines)):
                 diffs = []
                 path = f'de{detail_idx}'
@@ -121,9 +126,15 @@ class DetailsDiffer:
 
                 if diffs:
                     print(f'{doc.pdf_name}[{detail_idx}]: {"|".join(diffs)}')
+            if len(ref_lines) != len(new_lines):
+                long_lines = ref_lines if len(ref_lines) > len(new_lines) else new_lines
+                short_len = min(len(ref_lines), len(new_lines))
+                for (idx, long) in enumerate(long_lines[short_len:]):
+                    path = f'de{short_len+idx}'
+                    errors.append(OfficerIDDiffError(path=path, msg=f'{long["officer_id"]}->Missing'))
 
         doc.add_errors(errors)
-        self.lgr.info(f"=={doc.pdf_name}.detail_differ {len(doc.order.details)} {DataError.error_counts(errors)}")
+        self.lgr.info(f"=={doc.pdf_name}.details_differ {len(doc.order.details)} {DataError.error_counts(errors)}")
         [self.lgr.info(str(e)) for e in errors]
         self.remove_log_handler(doc)
         return doc

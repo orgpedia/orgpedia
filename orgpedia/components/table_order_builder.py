@@ -404,9 +404,9 @@ class TableOrderBuidler:
             if dt and (not err_msg):
                 result_dt = dt
 
-        if result_dt and (result_dt.year < 1947 or result_dt.year > 2022):
+        if result_dt and (result_dt.year < 1947 or result_dt.year > 2023):
             path = "pa0.word_labels.ORDERDATEPLACE"
-            msg = f"{doc.pdf_name} Incorrect date: {result_dt} in {date_text}"
+            msg = f"{doc.pdf_name} Incorrect date: > today in {date_text}"
             errors.append(IncorrectOrderDateError(path=path, msg=msg))
         elif result_dt is None:
             path = "pa0.word_labels.ORDERDATEPLACE"
