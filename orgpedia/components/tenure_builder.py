@@ -82,7 +82,6 @@ class TenureGapError(DataError):
         msg = f"Long Tenure Gap: {gap_years} years " + str(tenure)
         print(msg)
         return TenureGapError(path='', msg=msg, gap_years=gap_years)
-    
 
 
 # This should be called DetailPostInfo
@@ -355,7 +354,7 @@ class TenureBuilder:
 
         errors += [TenureLongError.build(t) for t in officer_tenures if t.duration_days > 365 * 6]
         for (t1, t2) in pairwise(officer_tenures):
-            gap_years = (t2.end_date - t1.start_date).days/365.0
+            gap_years = (t2.end_date - t1.start_date).days / 365.0
             if gap_years > 10:
                 print('**** ERROR FOUND ***')
                 errors.append(TenureGapError.build(t2, gap_years))

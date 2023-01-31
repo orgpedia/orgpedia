@@ -1,56 +1,68 @@
-import typer
-import json
-import pkg_resources
-from zipfile import ZipFile
-from pathlib import Path
+import json # noqa
 import shutil
+from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
+
+import pkg_resources
+import typer
+
+import data_package
 
 Writeable_Dir = typer.Argument(..., exists=True, file_okay=False, writable=True, resolve_path=True)
 Readable_Dir = typer.Argument(..., exists=True, file_okay=False, readable=True, resolve_path=True)
 
-import data_package
-
 app = typer.Typer()
 
-"""
+
 @app.command()
-def extract(module: str, extract_dir: Writeable_Dir, objects:str='all'):
-    try:
-        data_path = Path(pkg_resources.resource_filename(module, 'data'))
-    except ModuleNotFoundError:
-        print(f"Error: Unable to locate '{module}'")
-        typer.abort()
+def extract(package: str, extract_dir: Path = Writeable_Dir, objects: str = 'all'):
+    def get_packages(package):
+        if package == 'orgpedia_installed':
+            installed = pkg_resources.working_set
+            return [p.key for p in installed if p.key.startswith('orgpedia-')]
+        elif package.startswith('orgpedia-'):
+            return package
+        else:
+            installed = pkg_resources.working_set
+            return [p.key for p in installed if p.key == package]
 
-    if not data_path.exists():
-        print(f"Error: Unable to locate data dir in '{module}'")
-        typer.abort()
-
-    if objects == 'all':
-        data_package.extract_all(data_path, extract_dir)
-    else:
-        object_type, *object_names = objects.split(':', 1)
-
-        object_types = ('docs', 'orders', 'officer_info', 'post_info')
-        if object_type not in object_types:
-            print(f"Error: incorrect object_type '{object}' choose from {object_types}")
+    for package in get_packages(package):
+        try:
+            data_path = Path(pkg_resources.resource_filename(package, 'data'))
+        except ModuleNotFoundError:
+            print(f"Error: Unable to locate '{package}'")
             typer.abort()
 
-        object_names = object_names[0].split(',') if object_names else []
-        proc = getattr(data_package, f'extract_{object_type}')
-        proc(extract_dir, object_names)
+        if not data_path.exists():
+            print(f"Error: Unable to locate data dir in '{package}'")
+            typer.abort()
 
+        if objects == 'all':
+            data_package.extract_all(data_path, (extract_dir / package))
+        else:
+            object_type, *object_names = objects.split(':', 1)
 
-"""
+            object_types = ('docs', 'orders', 'officer_info', 'post_info')
+            if object_type not in object_types:
+                print(f"Error: incorrect object_type '{object}' choose from {object_types}")
+                typer.abort()
+
+            object_names = object_names[0].split(',') if object_names else []
+            proc = getattr(data_package, f'extract_{object_type}')
+            proc(data_path, extract_dir, object_names)
+
 
 @app.command()
-def export(task_dir: Path=Readable_Dir, export_dir: Path=Writeable_Dir):
+def export(task_dir: Path = Readable_Dir, export_dir: Path = Writeable_Dir):
+    """Export orders and docs from the final task directory."""
+
     def write_zip(zip_path, file_path):
         with ZipFile(zip_path, 'w') as zip_file:
             zip_file.write(file_path)
-    
-    # if not is_readable(task_dir / 'output'):
-    #     print("Unable to find the 'output' directory in {task_dir}")
-    #     typer.abort()
+
+    if not (task_dir / 'output').exists():
+        print("Unable to find the 'output' directory in task_dir: {task_dir}")
+        typer.abort()
 
     task_dir = Path(task_dir)
     export_dir = Path(export_dir)
@@ -58,40 +70,54 @@ def export(task_dir: Path=Readable_Dir, export_dir: Path=Writeable_Dir):
     (export_dir / '__init__.py').touch()
     data_dir = export_dir / 'data'
     output_dir = task_dir / 'output'
-    
+
     data_dir.mkdir(exist_ok=True)
-    with ZipFile(data_dir / 'docs.zip', 'w') as docs_zip, ZipFile(data_dir / 'orders.zip', 'w') as orders_zip:
-        #docs_zip.mkdir('docs')
-        #orders_zip.mkdir('orders')
+    with ZipFile(data_dir / 'docs.zip', 'w', ZIP_DEFLATED) as docs_zip, ZipFile(
+        data_dir / 'orders.zip', 'w', ZIP_DEFLATED
+    ) as orders_zip:
+
         docs_zip_path, orders_zip_path = Path('docs'), Path('orders')
-        
+
         for order_path in output_dir.glob('*.order.json'):
             doc_zip_path = docs_zip_path / order_path.name.replace('.order.', '.doc.')
             docs_zip.write(order_path, doc_zip_path)
 
-            doc_json = json.loads(order_path.read_text())
-            order_json = doc_json['order']
-            
+            # doc_json = json.loads(order_path.read_text())
+            # order_json = doc_json['order']
+
             order_zip_path = orders_zip_path / order_path.name
             orders_zip.write(order_path, order_zip_path)
-        #end for
+        # end for
 
     write_zip(data_dir / 'tenures.zip', output_dir / 'tenures.json')
-    #write_zip(data_dir / 'officer_infos.zip', output_dir / 'officer_infos.json')
-    #write_zip(data_dir / 'post_infos.zip', output_dir / 'post_infos.json')        
+    write_zip(data_dir / 'officer_infos.zip', output_dir / 'officer_infos.json')
+    write_zip(data_dir / 'post_infos.zip', output_dir / 'post_infos.json')
+
 
 @app.command()
-def exportSite(task_dir: Path=Readable_Dir, export_dir: Path=Writeable_Dir):
+def exportSite(task_dir: Path = Readable_Dir, export_dir: Path = Writeable_Dir):
     output_dir = task_dir / "output"
-    
+
     shutil.rmtree(export_dir)
-    shutil.copytree(output_dir, export_dir, symlinks=False) # copy contents of symlink
+    shutil.copytree(output_dir, export_dir, symlinks=False)  # copy contents of symlink
+
+
+@app.command()
+def writeSchema(schema_dir: Path = Writeable_Dir):
+    from orgpedia.extracts.orgpedia import Order, Tenure
+
+    order_path = schema_dir / "order.schema.json"
+    order_path.write_text(Order.schema_json(indent=2))
+
+    tenure_path = schema_dir / "tenure.schema.json"
+    tenure_path.write_text(Tenure.schema_json(indent=2))
+
 
 """
 @app.command()
 def check(name: str):
     print(f"Hello {name}")
-    
+
 @app.command()
 def checkSite(name: str):
     print(f"Hello {name}")
@@ -99,7 +125,7 @@ def checkSite(name: str):
 @app.command()
 def genReadme(name: str):
     print(f"Hello {name}")
-    
+
 @app.command()
 def linkUpstream(name: str):
     print(f"Hello {name}")
@@ -115,8 +141,8 @@ def diffOutput(name: str):
 @app.command()
 def stats(name: str):
     print(f"Hello {name}")
-    
-    
+
+
 
 
 @app.command()
@@ -130,4 +156,3 @@ def check(name: str, formal: bool = False):
 
 if __name__ == "__main__":
     app()
-

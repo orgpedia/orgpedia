@@ -99,13 +99,13 @@ class IDAssignerVocab:
         tenure_file_dict = read_config_from_disk(tenures_file)
         tenure_name_dict = {}
         for tenure in tenure_file_dict.get("ministries", []):
-            #s, e = tenure["start"], tenure["end"]
-            s, e = tenure["start_date"], tenure["end_date"]            
+            # s, e = tenure["start"], tenure["end"]
+            s, e = tenure["start_date"], tenure["end_date"]
             sDate = parser.parse(s).date()
-            #eDate = parser.parse(e).date() if e != "current" else datetime.date.today()
-            eDate = parser.parse(e).date() if e != "today" else datetime.date.today()                        
-            #tenure_name_dict[(sDate, eDate)] = tenure["name"]
-            tenure_name_dict[(sDate, eDate)] = tenure.get("pm")            
+            # eDate = parser.parse(e).date() if e != "current" else datetime.date.today()
+            eDate = parser.parse(e).date() if e != "today" else datetime.date.today()
+            # tenure_name_dict[(sDate, eDate)] = tenure["name"]
+            tenure_name_dict[(sDate, eDate)] = tenure.get("pm")
         return tenure_name_dict
 
     def add_log_handler(self, doc):

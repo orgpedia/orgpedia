@@ -3,7 +3,7 @@ import pathlib
 import sys
 from collections import Counter
 
-import graphviz
+# import graphviz
 import yaml
 from more_itertools import first, pairwise
 
@@ -32,29 +32,30 @@ def get_link_src(target):
         return src
 
 
+def get_pdf_file(file_path):
+    if isinstance(file_path, pathlib.Path):
+        file_name = file_path.name
+    else:
+        file_name = file_path
+
+    if '.pdf' in file_name:
+        return file_name[: file_name.index('.pdf') + 4]
+    else:
+        return ''
+
+
+def get_pdf_files(file_paths):
+    pdf_files = [get_pdf_file(f) for f in file_paths]
+    pdf_files = [pathlib.Path(f) for f in pdf_files if f]
+    return pdf_files
+
+
 def get_link_src_subdir(link_files, parent_dir):
     num_dirs = len(parent_dir.parents)
     srcs = [get_link_src(f) for f in link_files if f.is_symlink()]
     mat_srcs = [s for s in srcs if parent_dir in s.parents]
     mat_subdirs = set(s.parents[len(s.parents) - (num_dirs + 2)] for s in mat_srcs)
     return mat_subdirs
-
-
-class ErrorInfo:
-    def __init__(self, doc_name, error_line):
-        self.doc_name = doc_name
-        error_line = error_line[2:].replace('=', ' ').replace('Total:', 'Total ')
-        error_fields = error_line.split(' ')
-
-        self.total_entities = int(error_fields[1])
-        self.total_errors = int(error_fields[3])
-        self.error_counts = {}
-        for error_type, error_count in pairwise(error_fields[4:]):
-            self.error_counts[error_type] = error_count
-
-    @property
-    def error_pair(self):
-        return (self.total_entities, self.total_errors)
 
 
 class SubTask:
@@ -75,70 +76,6 @@ class SubTask:
     @property
     def full_name(self):
         return f"{self.task.name}->{self.name}"
-
-    def parse_error_line(self, error_line):
-        error_line = error_line[2:].replace('=' ' ')
-
-    def get_errors(self):
-        def is_error(line):
-            return line.startswith('==') and 'Errors' in line
-
-        def get_doc_name(log_file):
-            pdf_idx = log_file.name.lower().find('.pdf')
-            return log_file.name[: pdf_idx + 4]
-
-        if not self.stub:
-            return []
-
-        log_dir = self.task.taskDir / 'logs'
-        log_files = log_dir.glob(f'*.{self.stub}.*')
-
-        errors = []
-        for log_file in log_files:
-            doc_name = get_doc_name(log_file)
-            error_line = [l for l in log_file.read_text().split('\n') if is_error(l)]
-            if error_line:
-                error_line = error_line[0]
-                error_info = ErrorInfo(doc_name, error_line)
-                errors.append(error_info)
-        return errors
-
-    def get_error_percent(self):
-        if self.errors is None:
-            self.errors = self.get_errors()
-
-        if self.errors:
-            error_pairs = [e.error_pair for e in self.errors]
-            total_entities = [e[0] for e in error_pairs]
-            total_errors = [e[1] for e in error_pairs]
-            if sum(total_entities) != 0:
-                return (sum(total_errors) / sum(total_entities)) * 100
-            else:
-                return 0.0
-        else:
-            return 0.0
-
-    def get_total_entities(self):
-        if self.errors is None:
-            self.errors = self.get_errors()
-
-        if self.errors:
-            error_pairs = [e.error_pair for e in self.errors]
-            total_entities = [e[0] for e in error_pairs]
-            return sum(total_entities)
-        else:
-            return 0.0
-
-    def get_total_errors(self):
-        if self.errors is None:
-            self.errors = self.get_errors()
-
-        if self.errors:
-            error_pairs = [e.error_pair for e in self.errors]
-            total_errors = [e[1] for e in error_pairs]
-            return sum(total_errors)
-        else:
-            return 0.0
 
 
 class Task:
@@ -208,6 +145,17 @@ class Task:
                 raise NotImplementedError(f'Unknown type {type(skipped_info)}')
         return result
 
+    def get_skipped_pdfs(self):
+        result = []
+        for ipt_file, skipped_info in self.skipped_docs.items():
+            if isinstance(skipped_info, list):
+                result += skipped_info
+            elif isinstance(skipped_info, dict):
+                result += [s for s, r in skipped_info.items()]
+            else:
+                raise NotImplementedError(f'Unknown type {type(skipped_info)}')
+        return get_pdf_files(result)
+
     @property
     def sub_task_full_names(self):
         return [st.full_name for st in self.sub_tasks]
@@ -242,6 +190,15 @@ class Task:
             subDir = self.taskDir / subdir_name
             optFiles = list(subDir.glob("*.json")) + list(subDir.glob("*.html"))
             return optFiles
+
+        elif subdir_name == 'conf':
+            subDir = self.taskDir / subdir_name
+            cnfFiles = list(subDir.glob("*.yml"))
+            return cnfFiles
+        elif subdir_name == 'logs':
+            subDir = self.taskDir / subdir_name
+            cnfFiles = list(subDir.glob("*.logs"))
+            return cnfFiles
         else:
             raise NotImplementedError('Cannot list files in {subdir_name}')
 
@@ -267,7 +224,7 @@ class Task:
                 sub_tasks = [SubTask(yt, self, st_file) for yt in sub_dicts]
                 sub_tasks = [st for st in sub_tasks if st.name != 'html_generator']
                 self.skipped_docs[st_file.name] = yml_dict.get('ignore_docs', [])  # TODO
-                [st.get_errors() for st in sub_tasks]
+                # [st.get_errors() for st in sub_tasks]
 
                 all_sub_tasks.extend(sub_tasks)
             return all_sub_tasks
@@ -365,9 +322,39 @@ class Task:
         if not is_multiple(tskOutput, dwnInput):
             print(f'Mismatch: {self.name} output: {tskOutput} dwnInput: {dwnInput}')
 
+    def check_files(self):
+        # opt_ext_counts = self.get_ext_counts(self.optFiles)
+
+        ipt_files = set(get_pdf_files(self.iptFiles))
+
+        for dir_name in ['output', 'conf', 'logs']:
+            dir_files = [pathlib.Path(f) for f in self._getTaskFiles(dir_name)]
+            dir_files = [f for f in dir_files if '.pdf' in f.suffixes]
+
+            sfx_dict = {}
+            for f in dir_files:
+                sfx_dict.setdefault("".join(f.suffixes), []).append(f)
+
+            sfx_dict = dict((k, set(get_pdf_files(v))) for (k, v) in sfx_dict.items())
+            for (sfx, sfx_files) in sfx_dict.items():
+                sfx_extra = [f'{str(p).replace(".pdf", "")}{sfx}' for p in sfx_files - ipt_files]
+                sfx_len = len(sfx_extra)
+                if sfx_extra:
+                    sfx_str = f'[{sfx_len}] {" ".join(sfx_extra)}'
+                    print(f'Task {self.name} {dir_name} ext: {sfx} {sfx_str}')  # {",".join(sfx_extra)}')
+
+                if dir_name in ('output', 'logs'):
+                    opt_files = sfx_files.union(self.get_skipped_pdfs())
+                    ipt_extra = ipt_files - opt_files
+                    if ipt_extra:
+                        ipt_extra = [f'{str(p)}.{sfx}' for p in ipt_extra]
+                        ipt_str = f'[{len(ipt_extra)}] {" ".join(ipt_extra)}'
+                        print(f'Task {self.name} {dir_name} ext: {sfx} {ipt_str}')
+
     def checkTaskFlowCount(self):
         if len(self.iptFiles) == len(self.optFiles):
             return True
+
         elif self.iptFiles and not self.optFiles:
             print(f'Task Flow Mismatch: {self.name} ipt:{len(self.iptFiles)} opt:{len(self.optFiles)}')
             return False
@@ -401,9 +388,6 @@ class Task:
         def hasStub(fileNames, pdfFile):
             return any([pdfFile in str(fName) for fName in fileNames])
 
-        # if pdfFile == '1_Upload_1546.pdf' and self.name == 'genHtml_':
-        #    print('Found it')
-
         paths = []
         print(f'Exploring {self.name} [{pdfFile}]')
         if hasStub(self.iptFiles, pdfFile) and hasStub(self.optFiles, pdfFile):
@@ -432,7 +416,7 @@ class Pipeline:
 
         self.headTasks = [t for t in self.tasks if not t.upstream]
         self.tailTasks = [t for t in self.tasks if not t.downstreamTasks]
-        self.populateExportDir()
+        # self.populateExportDir()
 
     def _buildTasks(self):
         def isTask(taskDir):
@@ -479,11 +463,13 @@ class Pipeline:
 
     def checkIndividualFiles(self):
         self.pathsDict = {}
+        # ipt_files = flatten([t.iptFiles for t in self.headTasks])
 
-        for iptFile in self.headTask.iptFiles:
-            paths = self.headTask.getPaths(iptFile.name)
-            print(f'*** {iptFile.name} -> {len(paths)}')
-            self.pathsDict[iptFile] = paths
+        for ht in self.headTasks:
+            for iptFile in ht.iptFiles:
+                paths = ht.getPaths(iptFile.name)
+                print(f'*** {iptFile.name} -> {len(paths)}')
+                self.pathsDict[iptFile] = paths
         # end
 
     def show_mermaid(self):
@@ -554,86 +540,8 @@ class Pipeline:
         s += f'    errors: {total_error}\n'
         return s
 
-    def show(self, renderFile):
-        orgCode = self.pipelineDir.parent.name
-        dot = graphviz.Digraph(name=orgCode)
-        dot.attr('node', width='3.0', fixedsize='true', shape='plaintext')
-
-        for task in self.tasks:
-            t_name = f'cluster_{task.name}'
-            with dot.subgraph(name=t_name) as task_graph:
-                task_graph.attr(label=f"{task.name}")
-                [task_graph.node(st.full_name, st.name) for st in task.sub_tasks]
-                task_graph.edges(pairwise(task.sub_task_full_names))
-
-        for (t1, t2) in [(t1, t2) for t1 in self.tasks for t2 in t1.downstreamTasks]:
-            n1, n2 = t1.sub_tasks[-1].full_name, t2.sub_tasks[0].full_name
-            dot.edge(n1, n2)
-
-        print(dot.source)
-
-        renderFile = pathlib.Path(renderFile)
-        dot.render(renderFile.stem, format="png")
-
-    def render(self, renderFile):
-        orgCode = self.pipelineDir.parent.name
-
-        def label(name):
-            return pathlib.Path(name).parts[-1]
-
-        def subgraph(name):
-            parts = pathlib.Path(name).parts
-            print(f'** {name} -> {parts}')
-            if len(parts) > 1:
-                return str(pathlib.Path(*parts[:-1]))
-            else:
-                return orgCode
-
-        def parentSubgraph(s):
-            if s == 'orgCode':
-                return None
-            else:
-                return subgraph(s)
-
-        # create base graph
-        dot = graphviz.Digraph(name=orgCode)
-
-        edges = [(uName, t.name) for t in self.tasks for uName in t.upstream]
-
-        # identify subgraphNames the tasks that are in the directory
-        subgraphs = set([subgraph(t.name) for t in self.tasks])
-        graphDict = dict(
-            [(s, graphviz.Digraph(name=f'cluster_{s}', graph_attr={'label': s})) for s in subgraphs if s != orgCode]
-        )
-
-        # add all nodes to the base graph
-        # [dot.node(t.name) for t in self.tasks]
-        for t in self.tasks:
-            subgraphName = subgraph(t.name)
-            if subgraphName == orgCode:
-                dot.node(t.name)
-            else:
-                graphDict[subgraphName].node(t.name)
-
-        # add the base graph as well
-        graphDict[orgCode] = dot
-
-        for (n1, n2) in edges:
-            s1, s2 = subgraph(n1), subgraph(n2)
-            if s1 == s2:
-                graphDict[s1].edge(n1, n2)
-            else:
-                graphDict[orgCode].edge(n1, n2)
-        # end for
-
-        for g, gDot in graphDict.items():
-            parent = parentSubgraph(g)
-            if parent and parent != g:
-                graphDict[parent].subgraph(gDot)
-        print(dot.source)
-
-        renderFile = pathlib.Path(renderFile)
-        dot.render(renderFile.stem, format="png")
+    def show_setupErrors(self):
+        [t.check_files() for t in self.tasks]
 
 
 if __name__ == "__main__":
@@ -643,6 +551,8 @@ if __name__ == "__main__":
 
     if cwd.name == "pipeline" or cwd.name == "flow":
         pipeline_dir = cwd
+    elif (cwd / "flow").exists():
+        pipeline_dir = cwd / "flow"
     else:
         pipeline_dir = [p for p in cwd.parents if p.name in ("pipeline", "flow")]
         if not pipeline_dir:
@@ -666,7 +576,8 @@ if __name__ == "__main__":
             readme_path = task_dir / 'README.md'
             readme_path.write_text(task.show_readme())
         else:
-            print(task.show_readme())
+            # print(task.show_readme())
+            task.check_files()
 
     else:
         pipeline = Pipeline(pipeline_dir)
@@ -681,4 +592,7 @@ if __name__ == "__main__":
                 task_readme_path.write_text(task.show_readme())
         else:
             # print(pipeline.show_readme())
-            print(pipeline.show_summary())
+            # print(pipeline.show_summary())
+            # pipeline.checkPipelineFlowCount()
+            # pipeline.checkIndividualFiles()
+            pipeline.show_setupErrors()

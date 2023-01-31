@@ -1,19 +1,21 @@
+import json
 import logging
 import sys
 from pathlib import Path
-import json
 
 from docint.data_error import DataError
 from docint.vision import Vision
 
-
 # b /Users/mukund/Software/docInt/docint/pipeline/id_assigner.py:34
+
 
 class OrderDateDiffError(DataError):
     pass
 
+
 class OfficerIDDiffError(DataError):
     pass
+
 
 class PostIDDiffError(DataError):
     pass

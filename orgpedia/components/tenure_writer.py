@@ -5,15 +5,13 @@ import sys
 from operator import attrgetter
 from pathlib import Path
 
-
 import pydantic
 import yaml
-
+from docint.hierarchy import Hierarchy
 from docint.vision import Vision
 from more_itertools import flatten
-from docint.hierarchy import Hierarchy
 
-from ..extracts.orgpedia import OfficerID, Tenure
+from ..extracts.orgpedia import OfficerID, Order, Tenure
 
 # b /Users/mukund/Software/docInt/docint/pipeline/id_assigner.py:34
 
@@ -31,11 +29,21 @@ from ..extracts.orgpedia import OfficerID, Tenure
         },
         "post_id_fields": [],
         "output_dir": "output",
-        "translations_file": "trans.yml"
+        "translations_file": "trans.yml",
     },
 )
 class TenureWriter:
-    def __init__(self, conf_dir, conf_stub, formats, cadre_file_dict, hierarchy_files, post_id_fields, output_dir, translations_file):
+    def __init__(
+        self,
+        conf_dir,
+        conf_stub,
+        formats,
+        cadre_file_dict,
+        hierarchy_files,
+        post_id_fields,
+        output_dir,
+        translations_file,
+    ):
         self.conf_dir = Path(conf_dir)
         self.conf_stub = conf_stub
         self.formats = formats
@@ -98,6 +106,8 @@ class TenureWriter:
         self.lgr.info("Entering tenure writer")
 
         docs = list(docs)
+        for doc in docs:
+            doc.remove_all_extra_fields(except_fields=['order', 'tenures', 'words', 'lines', 'page_image'])
 
         self.tenures = list(flatten(doc.tenures for doc in docs))
         self.tenures.sort(key=attrgetter('tenure_id'))
@@ -110,7 +120,7 @@ class TenureWriter:
         officer_infos_path = self.output_dir / 'officer_infos.json'
         for officer_info in self.officer_infos:
             officer_info.language_names = self.translations['names'][officer_info.name]
-        
+
         self.officer_infos.sort(key=attrgetter('officer_id'))
         officer_infos_path.write_text(json.dumps(self.officer_infos, default=pydantic.json.pydantic_encoder))
 
@@ -125,4 +135,14 @@ class TenureWriter:
             post_infos['translations_{field}'] = self.translations[field]
 
         (self.output_dir / 'post_infos.json').write_text(json.dumps(post_infos, default=pydantic.json.pydantic_encoder))
+
+        # export removes region fields from docs, region is the parent class for all extracts
+        orders = [d.order.export() for d in docs]
+        (self.output_dir / 'orders.json').write_text(json.dumps(orders, default=pydantic.json.pydantic_encoder))
+
+        order_path = self.output_dir / "order.schema.json"
+        order_path.write_text(Order.schema_json(indent=2))
+
+        tenure_path = self.output_dir / "tenure.schema.json"
+        tenure_path.write_text(Tenure.schema_json(indent=2))
         return docs

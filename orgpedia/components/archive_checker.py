@@ -2,16 +2,13 @@ import datetime
 import hashlib
 import json
 import logging
-from pathlib import Path
-import urllib
 import sys
-
-
-from pydantic import BaseModel
+import urllib
+from pathlib import Path
 
 from docint.util import read_config_from_disk
 from docint.vision import Vision
-
+from pydantic import BaseModel
 
 # b /Users/mukund/Software/docInt/docint/pipeline/id_assigner.py:34
 
@@ -23,7 +20,8 @@ class DocMeta(BaseModel):
     download_time: datetime.datetime
     archive_url: str
     archive_time: datetime.datetime
-    sha: str
+    archive_sha: str
+    archive_status_code: str
     sha_matched: bool
 
     @classmethod

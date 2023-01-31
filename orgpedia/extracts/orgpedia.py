@@ -1,7 +1,7 @@
 import datetime
 import json
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Type, Union
 
 from docint.data_error import DataError
 from docint.region import Region
@@ -63,17 +63,17 @@ class Officer(Region):
 class Post(Region):
     post_str: str
 
-    dept_hpath: List[str]
-    role_hpath: List[str]
-    juri_hpath: List[str]
-    loca_hpath: List[str]
-    stat_hpath: List[str]
+    dept_hpath: List[str] = []
+    role_hpath: List[str] = []
+    juri_hpath: List[str] = []
+    loca_hpath: List[str] = []
+    stat_hpath: List[str] = []
 
-    dept_spans: List[Span]
-    role_spans: List[Span]
-    juri_spans: List[Span]
-    loca_spans: List[Span]
-    stat_spans: List[Span]
+    dept_spans: List[Span] = []
+    role_spans: List[Span] = []
+    juri_spans: List[Span] = []
+    loca_spans: List[Span] = []
+    stat_spans: List[Span] = []
 
     post_id: str = ""
     post_idx: int = -1
@@ -338,6 +338,13 @@ class OrderDetail(Region):
         }
         return {'shapes': shape_info, 'idxs': idx_info}
 
+    def export(self):
+        d = self.dict(exclude={'word_idxs', 'page_idx_'})
+        d['officer'] = self.officer.dict(exclude={'word_idxs', 'page_idx_'})
+        for verb in ['continues', 'relinquishes', 'assumes']:
+            d[verb] = [p.dict(exclude={'word_idxs', 'page_idx_'}) for p in getattr(self, verb)]
+        return d
+
 
 class IncorrectOrderDateError(DataError):
     pass
@@ -355,6 +362,14 @@ class Order(Region):
     path: Path
     details: List[OrderDetail]
     category: str = ""
+
+    class Config:
+        @staticmethod
+        def schema_extra(schema: Dict[str, Any], model: Type['Order']) -> None:
+            # import pdb
+            # pdb.set_trace()
+            del schema['properties']['word_idxs']
+            del schema['properties']['page_idx_']
 
     def get_regions(self):
         return [self] + self.details + list(flatten(d.get_regions() for d in self.details))
@@ -391,6 +406,11 @@ class Order(Region):
         page_idx, detail_idx = int(page_idx[2:]), int(detail_idx[2:])
 
         return [order.details[detail_idx]]
+
+    def export(self):
+        d = self.dict(exclude={'word_idxs', 'page_idx_'})
+        d['details'] = [d.export() for d in self.details]
+        return d
 
 
 # If it is not extending Region should it still be there, yes as it will be moved to Orgpeida

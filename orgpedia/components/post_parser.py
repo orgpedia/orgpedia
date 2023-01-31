@@ -148,7 +148,6 @@ class PostParserOnSentence:
                 errors.append(PostMismatchError(path=path, msg=msg))
         return errors
 
-
     def build_post_info(self, post_region, hier_span_groups, detail_idx):
         def build_post(post_fields_dict, post_spans):
             dept_sg = post_fields_dict.get("department", None)
