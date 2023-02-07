@@ -9,6 +9,8 @@ from docint.span import Span
 from more_itertools import flatten
 from pydantic import BaseModel
 
+import yaml
+
 
 class IncorrectOfficerNameError(DataError):
     pass
@@ -424,7 +426,7 @@ class Tenure(BaseModel):
     officer_start_date_idx: int = -1
 
     start_date: datetime.date
-    end_date: datetime.date
+    end_date: Union[datetime.date, str]
 
     start_order_id: str
     start_detail_idx: int
@@ -462,12 +464,16 @@ class Tenure(BaseModel):
         if not isinstance(dt, type(self.start_date)):
             raise ValueError(f'Incorrect type for date {type(dt)}')
 
-        return self.start_date <= dt < self.end_date
+        end_date = datetime.date.today() if self.end_date == "to_date" else self.end_date
+
+        return self.start_date <= dt < end_date
 
     def overlap_days(self, tenure):
         min_end = min(tenure.end_date, self.end_date)
         max_start = max(tenure.start_date, self.start_date)
         return max(0, (min_end - max_start).days)
+
+
 
     def overlaps(self, tenure):
         return self.overlap_days(tenure) > 0
@@ -518,6 +524,8 @@ class OfficerID(BaseModel):
         json_file = Path(json_file)
         if json_file.suffix.lower() in (".json", ".jsn"):
             officer_jsons = json.loads(json_file.read_text())
+        elif json_file.suffix.lower() in (".yml", ".yaml"):
+            officer_jsons = yaml.load(json_file.read_text(), Loader=yaml.FullLoader)
 
         officers = [OfficerID(**d) for d in officer_jsons["officers"]]
         return officers

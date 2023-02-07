@@ -1,4 +1,5 @@
 import os
+import json
 import pathlib
 import sys
 from collections import Counter
@@ -70,21 +71,23 @@ class SubTask:
                 break
             elif stub in yml_dict['config']:
                 self.stub = yml_dict['config'][stub]
-        # end
-        self.errors = None
+        self.stub = self.name if not self.stub else self.stub
 
     @property
     def full_name(self):
         return f"{self.task.name}->{self.name}"
 
+    def num_conf(self):
+        cnf_files = self.task._getTaskFiles('conf')
+        sub_cnf_files = [c for c in cnf_files if self.stub in c.name]
+        print(f'{self.name} -> stub: {self.stub} {len(sub_cnf_files)}')
+        return len(sub_cnf_files)
 
 class Task:
-    def __init__(self, taskDir, pipelineDir):
-        # if taskDir.name == 'buildTenure_':
-        #     print("Found It")
+    def __init__(self, taskDir, flowDir):
 
         self.taskDir = taskDir
-        self.pipelineDir = pipelineDir
+        self.flowDir = flowDir
         self.name = self._getTaskName(self.taskDir)
 
         self.iptFiles = self._getTaskFiles('input')
@@ -96,11 +99,31 @@ class Task:
         self.skipped_docs = {}
         self.sub_tasks = self._getSubTasks()
 
-        importDir = pipelineDir.parent / 'import'
-
+        importDir = flowDir.parent / 'import'
         i_paths = get_link_src_subdir(self.iptFiles, importDir)
-        self.importSubDirs = [i.relative_to(self.pipelineDir.parent) for i in i_paths]
+        self.importSubDirs = [i.relative_to(self.flowDir.parent) for i in i_paths]
+
+        #exportDir = flowDir.parent / 'export'        
+        #e_paths = get_link_src_subdir(self.iptFiles, exportDir)
+        
         self.exportSubDirs = []
+
+        self.errors = {}
+        self.edits = {}
+        
+        #self.calculate_error_edits() 
+
+    def calculate_error_edits(self):
+        output_ext, _ = self.get_output_ext_counts()
+        doc_files = [p for p in self.optFiles if output_ext in p.name ]
+        
+        for doc_file in doc_files:
+            json_doc = json.loads(doc_file.read_text())
+            for sub_task in self.sub_tasks:
+                name = sub_task.name
+                self.errors.setdefault(name, []).extend(json_doc.get('errors', {}).get(name, []))
+                self.edits.setdefault(name, []).extend(json_doc.get('edits', {}).get(name, []))
+        #end for
 
     def get_ext_counts(self, file_paths):
         def pdf_suffixes(pdf_file):
@@ -134,6 +157,7 @@ class Task:
         return list((e, c) for (e, c) in ext_counts.items() if e != opt_ext)
 
     def get_skipped_docs(self):
+        # returns string that can be printed on README'
         result = []
         for ipt_file, skipped_info in self.skipped_docs.items():
             if isinstance(skipped_info, list):
@@ -146,6 +170,7 @@ class Task:
         return result
 
     def get_skipped_pdfs(self):
+        # returns only a list of pdf files that are skipped'        
         result = []
         for ipt_file, skipped_info in self.skipped_docs.items():
             if isinstance(skipped_info, list):
@@ -164,17 +189,19 @@ class Task:
         if id(task) not in [id(t) for t in self.downstreamTasks]:
             self.downstreamTasks.append(task)
 
+    # todo, move this to flow dir
     def get_total_errors(self):
         return sum(st.get_total_errors() for st in self.sub_tasks)
-
+    
+    # todo, move this to flow dir
     def get_error_summary(self):
         return ', '.join(f'{st.name}: {st.get_total_errors()}' for st in self.sub_tasks if st.get_total_errors())
 
     def _getTaskName(self, dirPath):
         dirPathStr = str(dirPath)
-        pipelinePathStr = str(self.pipelineDir)
-        if pipelinePathStr in dirPathStr:
-            taskName = dirPathStr[len(pipelinePathStr) + 1 :]
+        flowPathStr = str(self.flowDir)
+        if flowPathStr in dirPathStr and dirPath.name not in ['hand']:
+            taskName = dirPathStr[len(flowPathStr) + 1 :]
             taskName = taskName[: taskName.rindex("_") + 1]
             return taskName
         else:
@@ -197,13 +224,12 @@ class Task:
             return cnfFiles
         elif subdir_name == 'logs':
             subDir = self.taskDir / subdir_name
-            cnfFiles = list(subDir.glob("*.logs"))
-            return cnfFiles
+            logFiles = list(subDir.glob("*.logs"))
+            return logFiles
         else:
             raise NotImplementedError('Cannot list files in {subdir_name}')
 
     def _getUpTasks(self):
-
         srcIptFiles = [get_link_src(l) for l in self.iptFiles]
         srcParentDirs = set([s.parent for s in srcIptFiles])
         taskNames = set([self._getTaskName(pDir) for pDir in srcParentDirs])
@@ -217,6 +243,7 @@ class Task:
                 sub_task_names = sub_task_file.read_text().split('\n')
                 sub_task_files = [sub_task_file.parent / n for n in sub_task_names if n]
 
+            self.sub_task_files = sub_task_files
             all_sub_tasks = []
             for st_file in sub_task_files:
                 yml_dict = yaml.load(st_file.read_text(), Loader=yaml.FullLoader)
@@ -224,8 +251,6 @@ class Task:
                 sub_tasks = [SubTask(yt, self, st_file) for yt in sub_dicts]
                 sub_tasks = [st for st in sub_tasks if st.name != 'html_generator']
                 self.skipped_docs[st_file.name] = yml_dict.get('ignore_docs', [])  # TODO
-                # [st.get_errors() for st in sub_tasks]
-
                 all_sub_tasks.extend(sub_tasks)
             return all_sub_tasks
 
@@ -234,13 +259,14 @@ class Task:
         info_file_path = src_dir / '.info.yml'
 
         if len(yml_files) == 0:
+            self.sub_task_files = []
             return []
-        elif len(yml_files) == 1:
+        if len(yml_files) == 1:
             return read_sub_tasks(yml_files[0])
         elif info_file_path in yml_files:
             return read_sub_tasks(info_file_path)
         else:
-            raise ValueError(f'Unable to find info.yml in {str(src_dir)}')
+            raise ValueError(f'Unable to find .info.yml in {str(src_dir)}')
 
     def show(self):
         results = [f'Task:{self.name}']
@@ -254,32 +280,39 @@ class Task:
                 results.append(f'\tSub-task: {sub_task.name}')
         print('\n'.join(results))
 
-    def show_mermaid(self):
-        s = '```mermaid\ngraph TD;\n'
-        for (st1, st2) in pairwise(self.sub_tasks):
-            total_entities = st1.get_total_entities()
-            error_percent = st1.get_error_percent()
-            total_str = total_entities if total_entities else ''
-            error_str = f'{error_percent:.2f}%' if error_percent else ''
+    # def show_mermaid(self):
+    #     s = '```mermaid\ngraph TD;\n'
+    #     for (st1, st2) in pairwise(self.sub_tasks):
+    #         total_entities = st1.get_total_entities()
+    #         error_percent = 90 #st1.get_error_percent()
+    #         total_str = total_entities if total_entities else ''
+    #         error_str = f'{error_percent:.2f}%' if error_percent else ''
 
-            t1_l1 = f'<div align=left>{st1.name}<div/><br/>'
-            t1_l2 = f'Total: {total_str}[{error_str}]'
-            s += f'\t{st1.name} [{t1_l1}{t1_l2}] --> {st2.name};\n'
-        s += '```\n'
-        print(s)
+    #         t1_l1 = f'<div align=left>{st1.name}<div/><br/>'
+    #         t1_l2 = f'Total: {total_str}[{error_str}]'
+    #         s += f'\t{st1.name} [{t1_l1}{t1_l2}] --> {st2.name};\n'
+    #     s += '```\n'
+
+    #     print(s)
 
     def show_counts(self):
         ipt_ext, ipt_count = self.get_input_ext_counts()
         opt_ext, opt_count = self.get_output_ext_counts()
         intermediates = self.get_intermediates_ext_counts()
 
-        s = '| Directory    | Files                          | Counts |\n'
-        s += '|--------------|--------------------------------|--------|\n'
+        s =   '| Directory    | Files                          | Counts |\n'
+        s += f'|--------------|--------------------------------|--------|\n'
         s += f'| input        | {ipt_ext:30} | {ipt_count:>6} |\n'
         s += f'| output       | {opt_ext:30} | {opt_count:>6} |\n'
 
         for i_ext, i_count in intermediates:
             s += f'| intermediate | {i_ext:30} | {i_count:>6} |\n'
+
+
+        sub_tasks = [s for s in self.sub_tasks if s.num_conf()]
+        conf_count = sum(s.num_conf() for s in sub_tasks)
+        conf_exts = ', '.join([f'{s.stub}[{s.num_conf()}]' for s in sub_tasks])
+        s += f'| conf         | {conf_exts:30} | {conf_count:>6} |\n'
         return s
 
     def show_skipped_docs(self):
@@ -298,11 +331,21 @@ class Task:
         s = '## Sub Tasks\n'
         s += f'There are {len(self.sub_tasks)} sub_tasks.\n'
         for sub_task in self.sub_tasks:
-            ent_tot, err_per = sub_task.get_total_entities(), sub_task.get_error_percent()
-            err_tot = sub_task.get_total_errors()
+            errors, edits = self.errors.get(sub_task.name, []), self.edits.get(sub_task.name, [])
+            err_str = "" #",".join(f"{k}: {s}" for (k,v) in Counter(e['name'] for e in errors).items())
+            edt_str = ", ".join(f"{k}: {v}" for (k,v) in Counter(e['cmd'] for e in edits).items())            
+            
             s += f'\n### {sub_task.name}\n'
-            s += f'    Entities: {ent_tot:,} Errors: {err_tot:,} [{err_per:.2f}%]\n'
+            s += f'    Errors: {len(errors)} [{err_str}]\n'
+            s += f'    Edits: {len(edits)} [{edt_str}]\n'
+            s += f'    Conf Files: {sub_task.num_conf()}\n'
 
+        return s
+
+    def show_footer(self):
+        s = '---'
+        sub_task_files = ', '.join(str(p) for p in self.sub_task_files)
+        s += '* This file is auto-generated from {sub_task_files} *'
         return s
 
     def show_readme(self):
@@ -310,25 +353,43 @@ class Task:
         s += self.show_counts() + '\n'
         s += self.show_skipped_docs() + '\n'
         s += self.show_sub_tasks() + '\n'
+        s += self.show_footer() + '\n'        
         return s
 
-    def checkPipelineFlowCount(self):
-        def is_multiple(x, m):
-            return x and (m % x) == 0
+    # def checkFlowFlowCount(self):
+    #     def is_multiple(x, m):
+    #         return x and (m % x) == 0
 
-        tskOutput = len(self.optFiles)
-        dwnInput = sum([len(dTask.iptFiles) for dTask in self.downstreamTasks])
+    #     tskOutput = len(self.optFiles)
+    #     dwnInput = sum([len(dTask.iptFiles) for dTask in self.downstreamTasks])
 
-        if not is_multiple(tskOutput, dwnInput):
-            print(f'Mismatch: {self.name} output: {tskOutput} dwnInput: {dwnInput}')
+    #     if not is_multiple(tskOutput, dwnInput):
+    #         print(f'Mismatch: {self.name} output: {tskOutput} dwnInput: {dwnInput}')
 
     def check_files(self):
+        def is_empty(yml_file):
+            assert yml_file.name.endswith('yml')
+            yml_dict = yaml.load(yml_file.read_text(), Loader=yaml.FullLoader)
+            return True if not yml_dict else False
+        
         # opt_ext_counts = self.get_ext_counts(self.optFiles)
 
         ipt_files = set(get_pdf_files(self.iptFiles))
 
         for dir_name in ['output', 'conf', 'logs']:
             dir_files = [pathlib.Path(f) for f in self._getTaskFiles(dir_name)]
+
+            if dir_name in ('conf', 'output'):
+                zero_files = [f for f in dir_files if f.stat().st_size == 0]
+                if zero_files:
+                    print(f'Task {self.name} {dir_name} zero_size: {" ".join(z.name for z in zero_files)}')
+
+            if dir_name == 'conf':
+                yml_files = [f for f in dir_files if f.suffix.endswith('yml')]
+                empty_files = [ f for f in yml_files if is_empty(f) ]
+                if empty_files:
+                    print(f'Task {self.name} {dir_name} empty: {" ".join(e.name for e in empty_files)}')
+                
             dir_files = [f for f in dir_files if '.pdf' in f.suffixes]
 
             sfx_dict = {}
@@ -406,31 +467,31 @@ class Task:
         return paths
 
 
-class Pipeline:
-    def __init__(self, pipelineDir):
-        self.pipelineDir = pipelineDir
-        self.org_code = pipelineDir.parent.name
+class Flow:
+    def __init__(self, flowDir):
+        self.flowDir = flowDir
+        self.org_code = flowDir.parent.name
         self.tasks = self._buildTasks()
         self.tasksDict = dict([(t.name, t) for t in self.tasks])
         self.populateDownstream()
 
         self.headTasks = [t for t in self.tasks if not t.upstream]
         self.tailTasks = [t for t in self.tasks if not t.downstreamTasks]
-        # self.populateExportDir()
+        self.populateExportDir()
 
     def _buildTasks(self):
         def isTask(taskDir):
-            if '.bak' in taskDir.parts:
+            if '.bak' in taskDir.parts or 'subFlows' in taskDir.parts:
                 return False
             subDirs = taskDir.glob("*")
             matchedDirs = [p for p in subDirs if p.name in ("input", "output")]
             return True if len(matchedDirs) == 2 else False
 
         tasks = []
-        for p in self.pipelineDir.glob("*/**"):
+        for p in self.flowDir.glob("*/**"):
             if p.is_dir() and p.name.endswith("_") and isTask(p):
-
-                tasks.append(Task(p, self.pipelineDir))
+                print(f'Building Task: {p}')
+                tasks.append(Task(p, self.flowDir))
         return tasks
 
     def populateDownstream(self):
@@ -439,61 +500,68 @@ class Pipeline:
 
     def populateExportDir(self):
         def getTaskName(dir_path):
-            rel_path = dir_path.parent.relative_to(self.pipelineDir)
+            rel_path = dir_path.parent.relative_to(self.flowDir)
             return str(rel_path)
 
-        export_dir = self.pipelineDir.parent / 'export'
-        exp_files = (f for f in export_dir.glob('**/*') if not f.is_dir())
+        export_dir = self.flowDir.parent / 'export' 
+        exp_files = (f for f in export_dir.glob('**/*') if (not f.is_dir()) and f.is_symlink())
+        exp_files = list(exp_files)
 
         src_dirs_exp_dirs = set((get_link_src(f).parent, f.parent) for f in exp_files)
         task_names_exp_dirs = set((getTaskName(s), e) for s, e in src_dirs_exp_dirs)
         for task_name, export_dir in task_names_exp_dirs:
-            export_dir = export_dir.relative_to(self.pipelineDir.parent)
+            export_dir = export_dir.relative_to(self.flowDir.parent)
             self.tasksDict[task_name].exportSubDirs.append(export_dir)
 
     def __getitem__(self, taskName):
         return self.tasksDict[taskName]
 
-    def checkTaskFlowCount(self):
-        print('Incorrect Counts')
-        [t for t in self.tasks if not t.checkTaskFlowCount()]
+    # def checkTaskFlowCount(self):
+    #     print('Incorrect Counts')
+    #     [t for t in self.tasks if not t.checkTaskFlowCount()]
 
-    def checkPipelineFlowCount(self):
-        [t.checkPipelineFlowCount() for t in self.tasks]
+    # def checkFlowFlowCount(self):
+    #     [t.checkFlowFlowCount() for t in self.tasks]
 
-    def checkIndividualFiles(self):
-        self.pathsDict = {}
-        # ipt_files = flatten([t.iptFiles for t in self.headTasks])
+    # def checkIndividualFiles(self):
+    #     self.pathsDict = {}
+    #     # ipt_files = flatten([t.iptFiles for t in self.headTasks])
 
-        for ht in self.headTasks:
-            for iptFile in ht.iptFiles:
-                paths = ht.getPaths(iptFile.name)
-                print(f'*** {iptFile.name} -> {len(paths)}')
-                self.pathsDict[iptFile] = paths
-        # end
+    #     for ht in self.headTasks:
+    #         for iptFile in ht.iptFiles:
+    #             paths = ht.getPaths(iptFile.name)
+    #             print(f'*** {iptFile.name} -> {len(paths)}')
+    #             self.pathsDict[iptFile] = paths
+    #     # end
 
     def show_mermaid(self):
         def get_task_line(t):
             _, ipt_count = t.get_input_ext_counts()
             _, opt_count = t.get_output_ext_counts()
             result = f'[<div align=leg>{t.name}</div><br/>'
-            result += f'Input: {ipt_count}<br/>Output: {opt_count}]'
+            result += f'input: {ipt_count}<br/>output: {opt_count}]'
             return result
 
         repo_url = f'https://github.com/orgpedia/{self.org_code}/tree/main'
-        s = '```mermaid\ngraph TD;\n'
+        s = '# Document Flow Diagram\n'
+        s += 'This diagram is an auto-generated from directory structure of `flow` directory'
+        s += ' and links present in `input` and `output` sub-folders (tasks). Click the box (task) to explore more.\n'
+        s += '\n```mermaid\ngraph TD;\n'
         task_names = []
 
-        ignore_tasks = ['RPS_List/buildOrder_', 'I.P.S/image/genOfficerID_']
+
+        ignore_tasks = ['RPS_List/buildOrder_', 'I.P.S/image/genOfficerID_', 'subFlows/hand']
 
         for (t1, t2) in [(t1, t2) for t1 in self.tasks for t2 in t1.downstreamTasks]:
             if 'ignore/' in t2.name:
                 continue
+            
             if t1.name in ignore_tasks or t2.name in ignore_tasks:
                 continue
 
             t1_line = get_task_line(t1)
             t2_line = get_task_line(t2) if not t2.downstreamTasks else ""
+            
 
             s += f'\t{t1.name}{t1_line} --> {t2.name}{t2_line};\n'
             task_names.append(t1.name)
@@ -512,12 +580,36 @@ class Pipeline:
                 s += f'\t{task.name} --> {export_dir};\n'
                 imp_exp_links.append(export_dir)
 
+                
+        self.ignore_files, self.skipped_files, total_unprocessed = {}, {}, 0
+        for task in self.tasks:
+            if 'ignore/' in task.name:
+                self.ignore_files[task.name] = len(task.iptFiles)
+                total_unprocessed += len(task.iptFiles)
+                continue
+
+            if task.name in ignore_tasks:
+                continue
+
+            _, ipt_count = task.get_input_ext_counts()
+            _, opt_count = task.get_output_ext_counts()
+            if ipt_count != opt_count:
+                self.skipped_files[task.name] =  ipt_count - opt_count
+                total_unprocessed += ipt_count - opt_count
+
         task_names = set(task_names)
         imp_exp_links = set(imp_exp_links)
         s += '\n'.join(f'\tclick {n} "{repo_url}/flow/{n}" "{n}";' for n in task_names)
         s += '\n'
         s += '\n'.join(f'\tclick {d} "{repo_url}/{d}" "{d}";' for d in imp_exp_links)
         s += '\n```\n'
+
+        s += f'## Unprocessed Documents: {total_unprocessed}\n'
+        s += '### Ignored Documents:\n'
+        s += '\n'.join(f'  - [{k}]({k}): {v}' for (k,v) in self.ignore_files.items())
+
+        s += '\n### Skipped Documents:\n'        
+        s += '\n'.join(f'  - [{k}]({k}): {v}' for (k,v) in self.skipped_files.items())        
         return s
 
     def show_readme(self):
@@ -540,37 +632,43 @@ class Pipeline:
         s += f'    errors: {total_error}\n'
         return s
 
-    def show_setupErrors(self):
+    def check_files(self):
         [t.check_files() for t in self.tasks]
 
-
-if __name__ == "__main__":
+def get_flow_task_dir():
     cwd = pathlib.Path.cwd()
+    flow_dir, task_dir = '', ''
 
-    pipeline_dir, task_dir = '', ''
-
-    if cwd.name == "pipeline" or cwd.name == "flow":
-        pipeline_dir = cwd
+    if cwd.name == "flow":
+        flow_dir = cwd
     elif (cwd / "flow").exists():
-        pipeline_dir = cwd / "flow"
+        flow_dir = cwd / "flow"
     else:
-        pipeline_dir = [p for p in cwd.parents if p.name in ("pipeline", "flow")]
-        if not pipeline_dir:
-            print(f"Unable to find 'pipeline' directory in the path: {cwd}")
+        flow_dir = [p for p in cwd.parents if p.name == "flow"]
+        if not flow_dir:
+            print(f"Unable to find 'flow' directory in the path: {cwd}")
             sys.exit(1)
-        elif len(pipeline_dir) > 1:
-            print(f"Multiple 'pipeline' directories found in the path: {cwd}")
+        elif len(flow_dir) > 1:
+            print(f"Multiple 'flow' directories found in the path: {cwd}")
             sys.exit(2)
         else:
-            pipeline_dir = pipeline_dir[0]
+            flow_dir = flow_dir[0]
             if cwd.name.endswith('_'):
                 task_dir = cwd
             else:
                 task_dir = first([p for p in cwd.parents if str(p).endswith('_')], '')
 
+    return flow_dir, task_dir
+    
+    
+
+
+
+if __name__ == "__main__":
+    flow_dir, task_dir = get_flow_task_dir()
+
     if task_dir:
-        pipeline = Pipeline(pipeline_dir)
-        task = first((t for t in pipeline.tasks if t.taskDir == task_dir), None)
+        task = Task(task_dir, flow_dir)
 
         if len(sys.argv) > 1 and sys.argv[1] == 'readme':
             readme_path = task_dir / 'README.md'
@@ -580,19 +678,19 @@ if __name__ == "__main__":
             task.check_files()
 
     else:
-        pipeline = Pipeline(pipeline_dir)
+        flow = Flow(flow_dir)
         if len(sys.argv) > 1 and sys.argv[1] == 'readme':
-            readme_path = pipeline_dir / 'README.md'
-            readme_path.write_text(pipeline.show_readme())
+            readme_path = flow_dir / 'README.md'
+            readme_path.write_text(flow.show_readme())
         elif len(sys.argv) > 1 and sys.argv[1] == 'readme_all':
-            readme_path = pipeline_dir / 'README.md'
-            readme_path.write_text(pipeline.show_readme())
-            for task in pipeline.tasks:
+            readme_path = flow_dir / 'README.md'
+            readme_path.write_text(flow.show_readme())
+            for task in flow.tasks:
                 task_readme_path = task.taskDir / 'README.md'
                 task_readme_path.write_text(task.show_readme())
         else:
-            # print(pipeline.show_readme())
-            # print(pipeline.show_summary())
-            # pipeline.checkPipelineFlowCount()
-            # pipeline.checkIndividualFiles()
-            pipeline.show_setupErrors()
+            # print(flow.show_readme())
+            # print(flow.show_summary())
+            # flow.checkFlowFlowCount()
+            # flow.checkIndividualFiles()
+            flow.check_files()

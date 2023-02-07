@@ -1,4 +1,5 @@
 import csv
+import datetime
 import json
 import logging
 import sys
@@ -106,10 +107,15 @@ class TenureWriter:
         self.lgr.info("Entering tenure writer")
 
         docs = list(docs)
-        for doc in docs:
-            doc.remove_all_extra_fields(except_fields=['order', 'tenures', 'words', 'lines', 'page_image'])
+        
+        # for doc in docs:
+        #     doc.remove_all_extra_fields(except_fields=['order', 'tenures', 'words', 'lines', 'page_image'])
 
         self.tenures = list(flatten(doc.tenures for doc in docs))
+        for tenure in self.tenures:
+            if tenure.end_order_id == "" and tenure.end_date == datetime.date.today():
+                tenure.end_date = "to_date"
+        
         self.tenures.sort(key=attrgetter('tenure_id'))
         (self.output_dir / 'tenures.json').write_text(json.dumps(self.tenures, default=pydantic.json.pydantic_encoder))
         with open((self.output_dir / 'tenures.csv'), 'w') as tenures_csv:
@@ -127,18 +133,23 @@ class TenureWriter:
         post_infos = {}
         for field in self.hierarchy_files:
             post_infos[field] = self.hierarchy_dict[field].to_dict()
-            names = self.hierarchy_dict[field].get_names()
+            names = self.hierarchy_dict[field].get_names() # we should remove aliases, like we are doing in officers
 
             missing_names = [n for n in names if n not in self.translations[field]]
             if missing_names:
                 print(f'Unable to find translations for {missing_names}')
-            post_infos['translations_{field}'] = self.translations[field]
+            post_infos[f'translations_{field}'] = self.translations[field]
 
         (self.output_dir / 'post_infos.json').write_text(json.dumps(post_infos, default=pydantic.json.pydantic_encoder))
 
         # export removes region fields from docs, region is the parent class for all extracts
         orders = [d.order.export() for d in docs]
         (self.output_dir / 'orders.json').write_text(json.dumps(orders, default=pydantic.json.pydantic_encoder))
+
+
+        ministries = yaml.load( (self.conf_dir / 'ministries.yml').read_text(), Loader=yaml.FullLoader)
+        (self.output_dir / 'ministries.json').write_text(json.dumps(ministries, default=pydantic.json.pydantic_encoder))
+        
 
         order_path = self.output_dir / "order.schema.json"
         order_path.write_text(Order.schema_json(indent=2))
