@@ -30,19 +30,28 @@ def extract(package: str, extract_dir: Path = Writeable_Dir, objects: str = 'all
 
     for package in get_packages(package):
         try:
-            data_path = Path(pkg_resources.resource_filename(package, 'data'))
+            zip_path = Path(pkg_resources.resource_filename(package, 'data'))
         except ModuleNotFoundError:
             print(f"Error: Unable to locate '{package}'")
-            typer.abort()
+            typer.Abort()
 
-        zip_path = data_path / 'data.zip'
-        if not data_path.exists() or not zip_path.exists():
-            print(f"Error: Unable to locate data dir in '{package}'")
-            typer.abort()
+        if not zip_path.exists():
+            print(f"Error: Unable to locate data.zip dir in '{package}'")
+            typer.Abort()
+
+        package_extract_dir = extract_dir / package
 
         if objects == 'all':
             with ZipFile(zip_path) as zip_file:
-                zip_file.extractall(extract_dir)
+                zip_file.extractall(package_extract_dir)
+
+
+
+@app.command()
+def importAll(import_dir: Path = Writeable_Dir):
+    importPackages(import_dir / 'data_packages')
+    importMdoels(import_dir / 'models')
+                
 
 @app.command()
 def importPackages(packages_dir: Path = Writeable_Dir):
@@ -56,7 +65,7 @@ def importModels(models_dir: Path = Writeable_Dir, models: str = 'all'):
     
     if not models_file.exists():
         print('Unable to find models.yml in {model_dir}')
-        typer.abort()
+        typer.Abort()
 
     models_dict = yaml.load(models_file.read_text(), Loader=yaml.FullLoader)
 
@@ -121,7 +130,7 @@ def check():
         flow.check_files()
     else:
         print('Unable to locate flow or task directory')
-        typer.abort()
+        typer.Abort()
 
 @app.command()
 def readme():
@@ -138,7 +147,7 @@ def readme():
             task_readme_path.write_text(task.show_readme())
     else:
         print('Unable to locate flow or task directory')
-        typer.abort()
+        typer.Abort()
 
 
 """
