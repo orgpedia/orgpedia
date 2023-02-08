@@ -8,7 +8,7 @@ import pkg_resources
 import typer
 import yaml
 
-import data_package
+from orgpedia.tools.flow import Flow, Task, get_flow_task_dir
 
 Writeable_Dir = typer.Argument(..., exists=True, file_okay=False, writable=True, resolve_path=False)
 Readable_Dir = typer.Argument(..., exists=True, file_okay=False, readable=True, resolve_path=False)
@@ -28,16 +28,21 @@ def extract(package: str, extract_dir: Path = Writeable_Dir, objects: str = 'all
             installed = pkg_resources.working_set
             return [p.key for p in installed if p.key == package]
 
+    packages = get_packages(package)
+    if not packages:
+        print('No packages to import.')
+        return
+
     for package in get_packages(package):
         try:
             zip_path = Path(pkg_resources.resource_filename(package, 'data'))
         except ModuleNotFoundError:
             print(f"Error: Unable to locate '{package}'")
-            typer.Abort()
+            raise typer.Abort()
 
         if not zip_path.exists():
             print(f"Error: Unable to locate data.zip dir in '{package}'")
-            typer.Abort()
+            raise typer.Abort()
 
         package_extract_dir = extract_dir / package
 
@@ -50,7 +55,7 @@ def extract(package: str, extract_dir: Path = Writeable_Dir, objects: str = 'all
 @app.command()
 def importAll(import_dir: Path = Writeable_Dir):
     importPackages(import_dir / 'data_packages')
-    importMdoels(import_dir / 'models')
+    importModels(import_dir / 'models')
                 
 
 @app.command()
@@ -60,13 +65,12 @@ def importPackages(packages_dir: Path = Writeable_Dir):
 @app.command()
 def importModels(models_dir: Path = Writeable_Dir, models: str = 'all'):
     models_file = models_dir / 'models.yml'
-
-    print('This commands takes a very long time (hours), check help for options.\n')
     
     if not models_file.exists():
-        print('Unable to find models.yml in {model_dir}')
-        typer.Abort()
+        print(f'No models to import. As models.yml is missing: {models_file}')
+        return
 
+    print('This commands takes a very long time (hours), check help for options.\n')
     models_dict = yaml.load(models_file.read_text(), Loader=yaml.FullLoader)
 
     for (name, info) in models_dict.items():
@@ -121,16 +125,16 @@ def exportSite(task_dir: Path = Readable_Dir, export_dir: Path = Writeable_Dir):
 
 @app.command()
 def check():
-    flow_dir, task_dir = flow.get_flow_task_dir()
+    flow_dir, task_dir = get_flow_task_dir()
     if task_dir:
-        task = flow.Task(task_dir, flow_dir)
+        task = Task(task_dir, flow_dir)
         task.check_files()
     elif flow_dir:
-        flow = flow.Flow(flow_dir)
+        flow = Flow(flow_dir)
         flow.check_files()
     else:
         print('Unable to locate flow or task directory')
-        typer.Abort()
+        raise typer.Abort()
 
 @app.command()
 def readme():
@@ -140,6 +144,7 @@ def readme():
         readme_path = task_dir / 'README.md'
         readme_path.write_text(task.show_readme())
     elif flow_dir:
+        flow = Flow(flow_dir)        
         readme_path = flow_dir / 'README.md'
         readme_path.write_text(flow.show_readme())
         for task in flow.tasks:
@@ -147,7 +152,7 @@ def readme():
             task_readme_path.write_text(task.show_readme())
     else:
         print('Unable to locate flow or task directory')
-        typer.Abort()
+        raise typer.Abort()
 
 
 """
@@ -188,5 +193,8 @@ def check(name: str, formal: bool = False):
 
 """
 
+def main() -> Any:
+    return app()
+
 if __name__ == "__main__":
-    app()
+    return app()
