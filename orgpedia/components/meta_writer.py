@@ -3,10 +3,8 @@ import hashlib
 import json
 import logging
 import sys
-import urllib
 from pathlib import Path
 
-from docint.util import read_config_from_disk
 from docint.vision import Vision
 from pydantic import BaseModel
 
@@ -63,7 +61,7 @@ class MetaWriter:
     ):
         self.meta_fie = Path(meta_file)
         self.meta_dict = json.loads(self.meta_file.read_text())
-        
+
         self.lgr = logging.getLogger(__name__)
         self.lgr.setLevel(logging.DEBUG)
         stream_handler = logging.StreamHandler(sys.stdout)
@@ -92,4 +90,3 @@ class MetaWriter:
         doc.meta = self.meta_dict[doc.pdf_name]
         self.remove_log_handler(doc)
         return doc
-    

@@ -12,7 +12,7 @@ from docint.vision import Vision
 from docint.word_line import words_in_lines
 from more_itertools import first
 
-from ..extracts.orgpedia import IncorrectOrderDateError, Officer, Order, OrderDetail, OrderDateNotFoundError
+from ..extracts.orgpedia import IncorrectOrderDateError, Officer, Order, OrderDateNotFoundError, OrderDetail
 
 """
 # TODO:

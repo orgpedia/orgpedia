@@ -3,20 +3,21 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Type, Union
 
+import yaml
 from docint.data_error import DataError
 from docint.region import Region
 from docint.span import Span
 from more_itertools import flatten
 from pydantic import BaseModel
 
-import yaml
-
 
 class IncorrectOfficerNameError(DataError):
     pass
 
+
 class EnglishWordsInNameError(DataError):
     pass
+
 
 class OfficerIDNotFoundError(DataError):
     pass
@@ -470,8 +471,6 @@ class Tenure(BaseModel):
         min_end = min(tenure.end_date, self.end_date)
         max_start = max(tenure.start_date, self.start_date)
         return max(0, (min_end - max_start).days)
-
-
 
     def overlaps(self, tenure):
         return self.overlap_days(tenure) > 0

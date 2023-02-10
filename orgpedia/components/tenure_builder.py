@@ -38,7 +38,6 @@ class TenureWithNoManager(DataError):
 
 
 class TenureMissingAssumeError(DataError):
-    
     @classmethod
     def build(cls, info):
         path = f"order.details{info.detail_idx}"

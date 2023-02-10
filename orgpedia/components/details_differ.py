@@ -133,8 +133,9 @@ class DetailsDiffer:
                 short_len = min(len(ref_lines), len(new_lines))
                 for (idx, long) in enumerate(long_lines[short_len:]):
                     path = f'de{short_len+idx}'
-                    errors.append(OfficerIDDiffError(path=path, msg=f'{long["officer_id"]}->Missing',
-                                                     name='OfficerIDDiff'))
+                    errors.append(
+                        OfficerIDDiffError(path=path, msg=f'{long["officer_id"]}->Missing', name='OfficerIDDiff')
+                    )
 
         doc.add_errors(errors)
         self.lgr.info(f"=={doc.pdf_name}.details_differ {len(doc.order.details)} {DataError.error_counts(errors)}")

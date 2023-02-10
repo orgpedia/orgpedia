@@ -223,7 +223,9 @@ class HindiOrderBuilder:
             else:
                 msg = f"Missing >{name_word}< in >{hi_name}<"
                 print(f"= Officer Error: {msg} {path}")
-                errors.append(IncorrectNameError(path=path, msg=msg, sub_str=name_word, full_name=hi_name, name='IncorrectName'))
+                errors.append(
+                    IncorrectNameError(path=path, msg=msg, sub_str=name_word, full_name=hi_name, name='IncorrectName')
+                )
                 return ""
 
         if path == "pa0.ta0.ro10.ce1":
@@ -373,7 +375,9 @@ class HindiOrderBuilder:
         if untrans_texts:
             print(f"hi:>{hi_text}< en:>UntranslatableTextsInPostError< {path}")
             msg = f'Untranslatable texts: >{"<, >".join(untrans_texts)}< >{hi_text}<'
-            trans_err = UntranslatableTextsInPostError(msg=msg, path=path, texts=untrans_texts, post_text=hi_text, name='UntranslatableTextsInPost')
+            trans_err = UntranslatableTextsInPostError(
+                msg=msg, path=path, texts=untrans_texts, post_text=hi_text, name='UntranslatableTextsInPost'
+            )
             return None, [trans_err]
 
         print(f"hi:>{hi_text}< en:>{post_str}< {path}")

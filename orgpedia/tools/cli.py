@@ -1,7 +1,7 @@
-import json # noqa
+import json  # noqa
 import shutil
-from pathlib import Path
 import subprocess
+from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import pkg_resources
@@ -40,7 +40,7 @@ def extract(package: str, extract_dir: Path = Writeable_Dir, objects: str = 'all
         if package_extract_dir.exists():
             print(f'data package exists at {package_extract_dir}, skipping')
             continue
-        
+
         try:
             zip_path = Path(pkg_resources.resource_filename(package, 'data.zip'))
         except ModuleNotFoundError:
@@ -56,21 +56,33 @@ def extract(package: str, extract_dir: Path = Writeable_Dir, objects: str = 'all
                 zip_file.extractall(package_extract_dir)
 
 
-
 @app.command()
 def importAll(import_dir: Path = Writeable_Dir):
     importPackages(import_dir / 'data_packages')
     importModels(import_dir / 'models')
-                
+
 
 @app.command()
 def importPackages(packages_dir: Path = Writeable_Dir):
-    extract('orgpedia_installed', packages_dir)
+    packages_file = packages_dir / 'data_packages.yml'
+    if not packages_file.exists():
+        print(f'No data-packages to import. As data_packages.yml is missing: {packages_file}')
+        return
+
+    packages_dict = yaml.load(packages_file.read_text(), Loader=yaml.FullLoader)
+    if not packages_dict:
+        print(f'No data-packages to import. As data_packages.yml is empty: {packages_file}')
+        return
+
+    for (name, info) in packages_dict.items():
+        print(f'data-package: {name}')
+        extract(name, packages_dir)
+
 
 @app.command()
 def importModels(models_dir: Path = Writeable_Dir, models: str = 'all'):
     models_file = models_dir / 'models.yml'
-    
+
     if not models_file.exists():
         print(f'No models to import. As models.yml is missing: {models_file}')
         return
@@ -83,14 +95,14 @@ def importModels(models_dir: Path = Writeable_Dir, models: str = 'all'):
 
         if source == 'local':
             continue
-        
+
         print(f'Model: {name}')
-        
+
         model_dir = models_dir / source / stub
         if model_dir.exists():
             print(f'\tSkipping {name} as {model_dir} exists\n')
             continue
-        
+
         git_cmd = ['git']
         if 'branch' in info:
             git_cmd += ['--branch', info['branch'], '--single-branch']
@@ -106,13 +118,14 @@ def importModels(models_dir: Path = Writeable_Dir, models: str = 'all'):
             subprocess.check_call(git_cmd)
         print()
 
+
 @app.command()
 def exportPackage(data_dir: Path = Readable_Dir, export_dir: Path = Writeable_Dir):
     """Export orders and docs from the final task directory."""
 
     data_dir = Path(data_dir)
     export_dir = Path(export_dir)
-    
+
     (export_dir / '__init__.py').touch()
 
     with ZipFile(export_dir / 'data.zip', 'w', ZIP_DEFLATED) as data_zip:
@@ -121,12 +134,14 @@ def exportPackage(data_dir: Path = Readable_Dir, export_dir: Path = Writeable_Di
             data_zip.write(data_path, zip_path)
         # end for
 
+
 @app.command()
 def exportSite(task_dir: Path = Readable_Dir, export_dir: Path = Writeable_Dir):
     output_dir = task_dir / "output"
 
     shutil.rmtree(export_dir)
     shutil.copytree(output_dir, export_dir, symlinks=False)  # copy contents of symlink
+
 
 @app.command()
 def check():
@@ -141,6 +156,7 @@ def check():
         print('Unable to locate flow or task directory')
         raise typer.Abort()
 
+
 @app.command()
 def readme():
     flow_dir, task_dir = get_flow_task_dir()
@@ -149,7 +165,7 @@ def readme():
         readme_path = task_dir / 'README.md'
         readme_path.write_text(task.show_readme())
     elif flow_dir:
-        flow = Flow(flow_dir)        
+        flow = Flow(flow_dir)
         for task in flow.tasks:
             task_readme_path = task.taskDir / 'README.md'
             task_readme_path.write_text(task.show_readme())
@@ -198,8 +214,10 @@ def check(name: str, formal: bool = False):
 
 """
 
+
 def main():
     return app()
+
 
 if __name__ == "__main__":
     app()

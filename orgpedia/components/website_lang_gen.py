@@ -14,7 +14,6 @@ from pathlib import Path
 import yaml
 from babel.dates import format_date
 from dateutil import parser
-from docint.util import read_config_from_disk
 from docint.vision import Vision
 from more_itertools import first, flatten
 
@@ -108,7 +107,7 @@ def format_lang_date(dt, lang, pattern_str):
 
 
 def lang_year(dt, lang):
-    if dt == "to_date" or dt >= RUN_END_DATE.year:    
+    if dt == "to_date" or dt >= RUN_END_DATE.year:
         return TODATE_DICT[lang]
     else:
         return ''.join(DIGIT_LANG_DICT[c][lang] for c in str(dt))
@@ -408,7 +407,7 @@ class TenureInfo:
 
     @property
     def end_year(self):
-        end_year =  "to_date" if self.tenure.end_date == "to_date" else self.tenure.end_date.year
+        end_year = "to_date" if self.tenure.end_date == "to_date" else self.tenure.end_date.year
         return lang_year(end_year, self.lang)
 
     @property
@@ -785,8 +784,8 @@ class CabinetInfo:
                     c.ministers_idxs,
                 ]
             )
-        #date_idxs.append((RUN_END_DATE - RUN_START_DATE).days)
-        date_idxs.append((datetime.date.today() - RUN_START_DATE).days)        
+        # date_idxs.append((RUN_END_DATE - RUN_START_DATE).days)
+        date_idxs.append((datetime.date.today() - RUN_START_DATE).days)
         return cabinet_idxs, date_idxs
 
     # @property
@@ -915,7 +914,7 @@ class WebsiteLanguageGenerator:
         self.languages = languages
         self.translation_file = Path(translation_file)
         self.post_infos_path = Path(post_infos_file)
-        
+
         if self.post_infos_path.exists():
             post_infos = json.loads(self.post_infos_path.read_text())
             self.depts = [d['name'] for d in post_infos['dept']['ministries']]
@@ -924,7 +923,7 @@ class WebsiteLanguageGenerator:
             self.depts = []
 
         ### TODO CHANGE THIS, to read from input file
-        #self.languages = LANG_CODES
+        # self.languages = LANG_CODES
         self.languages = ['en', 'hi']
 
         self.officer_info_dict = self.get_officer_infos(self.officer_info_files)
@@ -958,7 +957,7 @@ class WebsiteLanguageGenerator:
                 min_dict = yaml.load(self.ministry_path.read_text(), Loader=yaml.FullLoader)
             else:
                 min_dict = json.loads(self.ministry_path.read_text())
-                
+
             self.ministry_infos = self.build_ministryinfos(min_dict)
         else:
             self.ministry_infos = []
@@ -1003,7 +1002,7 @@ class WebsiteLanguageGenerator:
             o_path = Path(officer_info_file)
             if o_path.suffix.lower() == ".yml":
                 info_dict = yaml.load(o_path.read_text(), Loader=yaml.FullLoader)
-                # TODO, move all the code to name NOT full_name, 
+                # TODO, move all the code to name NOT full_name,
                 for o in info_dict['officers']:
                     o['full_name'] = o['name']
             else:
@@ -1683,7 +1682,9 @@ class WebsiteLanguageGenerator:
                 continue
             role = tenure.role if tenure.role else 'Cabinet Minister'
             dept = tenure.post_id.split('>')[1]
-            date_pairs = [(t.start_date.year, t.end_date.year if t.end_date != "to_date" else "to_date") for t in group_tenures]
+            date_pairs = [
+                (t.start_date.year, t.end_date.year if t.end_date != "to_date" else "to_date") for t in group_tenures
+            ]
             date_pairs = functools.reduce(merge_pairs, date_pairs, [])
 
             key_infos.append(KeyInfo(dept, role, date_pairs))

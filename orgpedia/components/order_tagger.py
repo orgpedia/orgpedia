@@ -88,7 +88,7 @@ class OrderTagger:
         if result_dt and (result_dt.year < 1947 or result_dt.year > 2021):
             path = "pa0.layoutlm.ORDERDATEPLACE"
             msg = f"{doc.pdf_name} Incorrect date: {result_dt} in {date_text}"
-            errors.append(IncorrectOrderDateError(path=path, msg=msg,name='IncorrectOrderDate'))
+            errors.append(IncorrectOrderDateError(path=path, msg=msg, name='IncorrectOrderDate'))
         elif result_dt is None:
             path = "pa0.layoutlm.ORDERDATEPLACE"
             msg = f"{doc.pdf_name} text: >{date_text}<"
