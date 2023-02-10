@@ -15,10 +15,8 @@ import yaml
 class IncorrectOfficerNameError(DataError):
     pass
 
-
 class EnglishWordsInNameError(DataError):
     pass
-
 
 class OfficerIDNotFoundError(DataError):
     pass
@@ -352,7 +350,7 @@ class IncorrectOrderDateError(DataError):
     pass
 
 
-class OrderDateNotFoundErrror(DataError):
+class OrderDateNotFoundError(DataError):
     pass
 
 

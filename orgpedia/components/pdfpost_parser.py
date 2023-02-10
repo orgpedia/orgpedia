@@ -217,7 +217,7 @@ class PostParser:
 
         if not post.role and not underTraining:
             msg = f"Empty role >{post.post_str}<"
-            errors.append(PostEmptyRoleError(msg=msg, path=post_path))
+            errors.append(PostEmptyRoleError(msg=msg, path=post_path, name='PostEmptyRole'))
 
         if (
             emptyDeptAndJuri  # noqa: W503 todo
@@ -226,14 +226,14 @@ class PostParser:
             and (not promoted)  # noqa: W503 todo
         ):
             msg = f"Both department and jurisdiction fields are empty >{post.post_str}<"
-            errors.append(PostEmptyDeptAndJuriError(msg=msg, path=post_path))
+            errors.append(PostEmptyDeptAndJuriError(msg=msg, path=post_path, name='PostEmptyDeptAndJuri'))
 
         non_overlap_spans = Span.accumulate(post.spans, post.post_str)
         u_texts = Span.unmatched_texts(non_overlap_spans, post.post_str)
         u_texts = [t for t in u_texts if t.isalnum()]
         if u_texts:
             msg = f'unmatched texts: >{"<, >".join(u_texts)}< >{post.post_str}<'
-            errors.append(PostUnmatchedTextsError(msg=msg, path=post_path, texts=u_texts))
+            errors.append(PostUnmatchedTextsError(msg=msg, path=post_path, texts=u_texts, name='PostUnmatchedTexts'))
         return errors
 
     def parse(self, post_words, post_str, post_path, rank=None):

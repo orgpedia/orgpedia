@@ -26,7 +26,7 @@ class TenureManagerWithLeafRole(DataError):
         mgrs_id = ", ".join(t.officer_id for t in manager_tenures)
         msg = f"t_id: {tenure.officer_id} mgrs_id: {mgrs_id} post_id: {tenure.post_id}"
         path = f"te.{tenure.tenure_id}"
-        return TenureManagerWithLeafRole(path=path, msg=msg)
+        return TenureManagerWithLeafRole(path=path, msg=msg, name='TenureManagerWithLeafRole')
 
 
 class TenureWithNoManager(DataError):
@@ -34,10 +34,11 @@ class TenureWithNoManager(DataError):
     def build(cls, tenure):
         msg = f"t_id: {tenure.officer_id} post_id: {tenure.post_id}"
         path = f"te.{tenure.tenure_id}"
-        return TenureWithNoManager(path=path, msg=msg)
+        return TenureWithNoManager(path=path, msg=msg, name='TenureWithNoManager')
 
 
 class TenureMissingAssumeError(DataError):
+    
     @classmethod
     def build(cls, info):
         path = f"order.details{info.detail_idx}"
@@ -45,7 +46,7 @@ class TenureMissingAssumeError(DataError):
         post_str = f"Post: {info.post_id}"
         officer_str = f"Officer: {info.officer_id}"
         msg = f"Missing assume for {info.verb}: {order_str} {post_str} {officer_str}"
-        return TenureMissingAssumeError(path=path, msg=msg)
+        return TenureMissingAssumeError(path=path, msg=msg, name='TenureMissingAssume')
 
 
 class TenureMultipleRolesError(DataError):
@@ -61,7 +62,7 @@ class TenureMultipleRolesError(DataError):
         role_str = "|".join(role_info(i) for i in info.all_infos)
         officer_str = f"Officer: {info.officer_id}"
         msg = f"Multiple roles {officer_str} {role_str}"
-        return TenureMultipleRolesError(path=path, msg=msg, roles=roles)
+        return TenureMultipleRolesError(path=path, msg=msg, roles=roles, name='TenureMultipleRoles')
 
 
 class TenureLongError(DataError):
@@ -71,7 +72,7 @@ class TenureLongError(DataError):
     def build(cls, tenure):
         msg = "Long Tenure " + str(tenure)
         print(msg)
-        return TenureLongError(path='', msg=msg, duration_days=tenure.duration_days)
+        return TenureLongError(path='', msg=msg, duration_days=tenure.duration_days, name='TenureLong')
 
 
 class TenureGapError(DataError):
@@ -81,7 +82,7 @@ class TenureGapError(DataError):
     def build(cls, tenure, gap_years):
         msg = f"Long Tenure Gap: {gap_years} years " + str(tenure)
         print(msg)
-        return TenureGapError(path='', msg=msg, gap_years=gap_years)
+        return TenureGapError(path='', msg=msg, gap_years=gap_years, name='TenureGap')
 
 
 # This should be called DetailPostInfo

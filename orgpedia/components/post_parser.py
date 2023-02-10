@@ -130,13 +130,13 @@ class PostParserOnSentence:
     def check_span_groups(self, posts_groups_dict, path):
         errors = []
         if not posts_groups_dict:
-            errors.append(PostEmptyError(path=path, msg="postinfo is empty"))
+            errors.append(PostEmptyError(path=path, msg="postinfo is empty", name='PostEmpty'))
             return errors
 
         if not all(len(post_groups) for post_groups in posts_groups_dict.values()):
             verbs = [v for v, pg in posts_groups_dict.items() if len(pg) == 0]
             msg = f"empty verbs: {','.join(verbs)}"
-            errors.append(PostEmptyVerbError(path=path, msg=msg))
+            errors.append(PostEmptyVerbError(path=path, msg=msg, name='PostEmptyVerb'))
             return errors
 
         for (verb, post_groups) in posts_groups_dict.items():
@@ -145,7 +145,7 @@ class PostParserOnSentence:
 
             if num_roles > num_depts:
                 msg = f"verb: {verb} num_roles:{num_roles} num_depts:{num_depts}"
-                errors.append(PostMismatchError(path=path, msg=msg))
+                errors.append(PostMismatchError(path=path, msg=msg, name='PostMismatch'))
         return errors
 
     def build_post_info(self, post_region, hier_span_groups, detail_idx):

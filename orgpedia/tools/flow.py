@@ -97,33 +97,41 @@ class Task:
         self.downstreamTasks = []
 
         self.skipped_docs = {}
+
+        self.sub_task_files = []
+        self.sub_task_descriptions = []
         self.sub_tasks = self._getSubTasks()
 
         importDir = flowDir.parent / 'import'
         i_paths = get_link_src_subdir(self.iptFiles, importDir)
         self.importSubDirs = [i.relative_to(self.flowDir.parent) for i in i_paths]
 
-        #exportDir = flowDir.parent / 'export'        
-        #e_paths = get_link_src_subdir(self.iptFiles, exportDir)
-        
         self.exportSubDirs = []
+        
 
         self.errors = {}
         self.edits = {}
+        self.total_pages = 0
+        self.check_computed = False
         
         #self.calculate_error_edits() 
 
     def calculate_error_edits(self):
+        if self.check_computed:
+            return
+        
         output_ext, _ = self.get_output_ext_counts()
         doc_files = [p for p in self.optFiles if output_ext in p.name ]
         
         for doc_file in doc_files:
             json_doc = json.loads(doc_file.read_text())
+            self.total_pages += len(json_doc['pages'])
             for sub_task in self.sub_tasks:
                 name = sub_task.name
                 self.errors.setdefault(name, []).extend(json_doc.get('errors', {}).get(name, []))
                 self.edits.setdefault(name, []).extend(json_doc.get('edits', {}).get(name, []))
-        #end for
+                
+        self.check_computed = True
 
     def get_ext_counts(self, file_paths):
         def pdf_suffixes(pdf_file):
@@ -164,7 +172,8 @@ class Task:
                 reason = f'Skipped in {ipt_file}'
                 result += [(s, reason) for s in skipped_info]
             elif isinstance(skipped_info, dict):
-                result += [(s, f'{ipt_file} {r}') for s, r in skipped_info.items()]
+                st_file = ipt_file if len(self.sub_task_files) > 1 else ''
+                result += [(s, f'{st_file} {r}') for s, r in skipped_info.items()]
             else:
                 raise NotImplementedError(f'Unknown type {type(skipped_info)}')
         return result
@@ -247,7 +256,8 @@ class Task:
             all_sub_tasks = []
             for st_file in sub_task_files:
                 yml_dict = yaml.load(st_file.read_text(), Loader=yaml.FullLoader)
-                sub_dicts = yml_dict['pipeline']
+                self.sub_task_descriptions.append(yml_dict.get('description', []))
+                sub_dicts = yml_dict.get('pipeline', [])
                 sub_tasks = [SubTask(yt, self, st_file) for yt in sub_dicts]
                 sub_tasks = [st for st in sub_tasks if st.name != 'html_generator']
                 self.skipped_docs[st_file.name] = yml_dict.get('ignore_docs', [])  # TODO
@@ -259,7 +269,6 @@ class Task:
         info_file_path = src_dir / '.info.yml'
 
         if len(yml_files) == 0:
-            self.sub_task_files = []
             return []
         if len(yml_files) == 1:
             return read_sub_tasks(yml_files[0])
@@ -280,51 +289,40 @@ class Task:
                 results.append(f'\tSub-task: {sub_task.name}')
         print('\n'.join(results))
 
-    # def show_mermaid(self):
-    #     s = '```mermaid\ngraph TD;\n'
-    #     for (st1, st2) in pairwise(self.sub_tasks):
-    #         total_entities = st1.get_total_entities()
-    #         error_percent = 90 #st1.get_error_percent()
-    #         total_str = total_entities if total_entities else ''
-    #         error_str = f'{error_percent:.2f}%' if error_percent else ''
-
-    #         t1_l1 = f'<div align=left>{st1.name}<div/><br/>'
-    #         t1_l2 = f'Total: {total_str}[{error_str}]'
-    #         s += f'\t{st1.name} [{t1_l1}{t1_l2}] --> {st2.name};\n'
-    #     s += '```\n'
-
-    #     print(s)
 
     def show_counts(self):
         ipt_ext, ipt_count = self.get_input_ext_counts()
         opt_ext, opt_count = self.get_output_ext_counts()
         intermediates = self.get_intermediates_ext_counts()
 
+        ipt_str = f'*{ipt_ext:29}'
+        opt_str = f'*{opt_ext:29}' if opt_count else f'{" ":30}'
+
         s =   '| Directory    | Files                          | Counts |\n'
         s += f'|--------------|--------------------------------|--------|\n'
-        s += f'| input        | {ipt_ext:30} | {ipt_count:>6} |\n'
-        s += f'| output       | {opt_ext:30} | {opt_count:>6} |\n'
+        s += f'| input        | {ipt_str} | {ipt_count:>6} |\n'
+        s += f'| output       | {opt_str} | {opt_count:>6} |\n'
 
         for i_ext, i_count in intermediates:
-            s += f'| intermediate | {i_ext:30} | {i_count:>6} |\n'
+            s += f'| intermediate | *{i_ext:30} | {i_count:>6} |\n'
 
 
         sub_tasks = [s for s in self.sub_tasks if s.num_conf()]
         conf_count = sum(s.num_conf() for s in sub_tasks)
-        conf_exts = ', '.join([f'{s.stub}[{s.num_conf()}]' for s in sub_tasks])
+        conf_exts = ', '.join([f'*.{s.stub}.yml[{s.num_conf()}]' for s in sub_tasks])
         s += f'| conf         | {conf_exts:30} | {conf_count:>6} |\n'
         return s
 
     def show_skipped_docs(self):
-        s = '## Skipped Docs\n'
+        s = '## Skipped Documents\n'
         if not self.skipped_docs:
             s += 'No docs skipped.'
             return s
 
-        image_dir = '/import/images'
+        doc_dir = '/import/documents'
         for idx, (doc_name, reason) in enumerate(self.get_skipped_docs()):
-            doc_dir = doc_name.replace('.pdf', '')
-            s += f'{idx}. [{doc_name}]({image_dir}/{doc_dir}): {reason}\n'
+            doc_path = f'{doc_dir}/{doc_name}'
+            s += f'{idx+1}. [{doc_name}]({doc_path}): {reason}\n'
         return s
 
     def show_sub_tasks(self):
@@ -332,39 +330,32 @@ class Task:
         s += f'There are {len(self.sub_tasks)} sub_tasks.\n'
         for sub_task in self.sub_tasks:
             errors, edits = self.errors.get(sub_task.name, []), self.edits.get(sub_task.name, [])
-            err_str = "" #",".join(f"{k}: {s}" for (k,v) in Counter(e['name'] for e in errors).items())
+            err_str = ", ".join(f"{k}: {v}" for (k,v) in Counter(e['name'] for e in errors).items())
             edt_str = ", ".join(f"{k}: {v}" for (k,v) in Counter(e['cmd'] for e in edits).items())            
             
             s += f'\n### {sub_task.name}\n'
-            s += f'    Errors: {len(errors)} [{err_str}]\n'
-            s += f'    Edits: {len(edits)} [{edt_str}]\n'
+            s += f'    Errors: {len(errors):,d} [{err_str}]\n'
+            s += f'    Edits: {len(edits):,d} [{edt_str}]\n'
             s += f'    Conf Files: {sub_task.num_conf()}\n'
 
         return s
 
     def show_footer(self):
-        s = '---'
-        sub_task_files = ', '.join(str(p) for p in self.sub_task_files)
-        s += '* This file is auto-generated from {sub_task_files} *'
+        s = '\n---\n'
+        st_files = [ p.relative_to(self.taskDir) for p in self.sub_task_files]
+        sub_task_files = ', '.join(f'[{str(p)}]({str(p)})' for p in st_files)
+        s += f'*This file is auto-generated from {sub_task_files}, and by adding edits and errors from json files in the output directory.*'
         return s
 
     def show_readme(self):
-        s = f'# {task.name}\n\n'
+        self.calculate_error_edits()
+        s = f'# Task: {self.name}\n\n'
+        s += '\n'.join(self.sub_task_descriptions) + '\n\n'
         s += self.show_counts() + '\n'
         s += self.show_skipped_docs() + '\n'
         s += self.show_sub_tasks() + '\n'
         s += self.show_footer() + '\n'        
         return s
-
-    # def checkFlowFlowCount(self):
-    #     def is_multiple(x, m):
-    #         return x and (m % x) == 0
-
-    #     tskOutput = len(self.optFiles)
-    #     dwnInput = sum([len(dTask.iptFiles) for dTask in self.downstreamTasks])
-
-    #     if not is_multiple(tskOutput, dwnInput):
-    #         print(f'Mismatch: {self.name} output: {tskOutput} dwnInput: {dwnInput}')
 
     def check_files(self):
         def is_empty(yml_file):
@@ -494,6 +485,25 @@ class Flow:
                 tasks.append(Task(p, self.flowDir))
         return tasks
 
+    def is_valid_task(self, task):
+        return False if 'ignore' in task.name else True
+
+    def get_total_import_docs(self):
+        return sum(len(ht.iptFiles) for ht in self.headTasks)
+
+    def get_total_export_docs(self):
+        return sum(len(tt.optFiles) for tt in self.tailTasks)
+    
+    def get_total_import_pages(self):
+        return sum(ht.total_pages for ht in self.headTasks)
+
+    def get_total_export_pages(self):
+        return sum(tt.total_pages for tt in self.tailTasks)    
+
+    @property
+    def valid_tasks(self):
+        return [t for t in self.tasks if is_valid_task(t)]
+
     def populateDownstream(self):
         for task in self.tasks:
             [self.tasksDict[uptaskName].addDwnTask(task) for uptaskName in task.upstream]
@@ -516,24 +526,6 @@ class Flow:
     def __getitem__(self, taskName):
         return self.tasksDict[taskName]
 
-    # def checkTaskFlowCount(self):
-    #     print('Incorrect Counts')
-    #     [t for t in self.tasks if not t.checkTaskFlowCount()]
-
-    # def checkFlowFlowCount(self):
-    #     [t.checkFlowFlowCount() for t in self.tasks]
-
-    # def checkIndividualFiles(self):
-    #     self.pathsDict = {}
-    #     # ipt_files = flatten([t.iptFiles for t in self.headTasks])
-
-    #     for ht in self.headTasks:
-    #         for iptFile in ht.iptFiles:
-    #             paths = ht.getPaths(iptFile.name)
-    #             print(f'*** {iptFile.name} -> {len(paths)}')
-    #             self.pathsDict[iptFile] = paths
-    #     # end
-
     def show_mermaid(self):
         def get_task_line(t):
             _, ipt_count = t.get_input_ext_counts()
@@ -550,14 +542,19 @@ class Flow:
         task_names = []
 
 
-        ignore_tasks = ['RPS_List/buildOrder_', 'I.P.S/image/genOfficerID_', 'subFlows/hand']
+        #ignore_tasks = ['RPS_List/buildOrder_', 'I.P.S/image/genOfficerID_', 'subFlows/hand']
+        ignore_tasks = []
 
         for (t1, t2) in [(t1, t2) for t1 in self.tasks for t2 in t1.downstreamTasks]:
-            if 'ignore/' in t2.name:
+
+            if not self.is_valid_task(t2):
                 continue
             
-            if t1.name in ignore_tasks or t2.name in ignore_tasks:
-                continue
+            # if 'ignore/' in t2.name:
+            #     continue
+            
+            # if t1.name in ignore_tasks or t2.name in ignore_tasks:
+            #     continue
 
             t1_line = get_task_line(t1)
             t2_line = get_task_line(t2) if not t2.downstreamTasks else ""
@@ -588,7 +585,7 @@ class Flow:
                 total_unprocessed += len(task.iptFiles)
                 continue
 
-            if task.name in ignore_tasks:
+            if not self.is_valid_task(task):
                 continue
 
             _, ipt_count = task.get_input_ext_counts()
@@ -609,7 +606,22 @@ class Flow:
         s += '\n'.join(f'  - [{k}]({k}): {v}' for (k,v) in self.ignore_files.items())
 
         s += '\n### Skipped Documents:\n'        
-        s += '\n'.join(f'  - [{k}]({k}): {v}' for (k,v) in self.skipped_files.items())        
+        s += '\n'.join(f'  - [{k}]({k}): {v}' for (k,v) in self.skipped_files.items())
+
+        total_errors = sum(len(es) for t in self.tasks for (st, es) in t.errors.items())
+        total_edits = sum(len(es) for t in self.tasks for (st, es) in t.edits.items())        
+
+        s += f'\n## Summary:\n'
+        s += f'- Import Documents: {self.get_total_import_docs():,d}\n'
+        s += f'- Import Pages: {self.get_total_import_pages():,d}\n'
+        s += '-  \n'
+        s += f'- Export Documents: {self.get_total_export_docs():,d}\n'
+        s += f'- Export Pages: {self.get_total_export_pages():,d}\n'
+        s += '-  \n'        
+        s += f'- Errors: {total_errors:,d}\n'
+        s += f'- Edits: {total_edits:,d}\n'
+        s += '-  \n'                
+        s += f'- Edits per Page: {total_edits/self.get_total_export_pages():.4f}\n'        
         return s
 
     def show_readme(self):
@@ -685,7 +697,7 @@ if __name__ == "__main__":
         elif len(sys.argv) > 1 and sys.argv[1] == 'readme_all':
             readme_path = flow_dir / 'README.md'
             readme_path.write_text(flow.show_readme())
-            for task in flow.tasks:
+            for task in flow.valid_tasks:
                 task_readme_path = task.taskDir / 'README.md'
                 task_readme_path.write_text(task.show_readme())
         else:

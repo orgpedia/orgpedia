@@ -123,6 +123,12 @@ class TenureWriter:
             csv_writer.writeheader()
             csv_writer.writerows(self.get_tenures_csv(self.tenures))
 
+        with open((self.output_dir / 'tenures-sample.csv'), 'w') as tenures_sample_csv:
+            csv_writer = csv.DictWriter(tenures_sample_csv, fieldnames=self.get_tenures_header())
+            csv_writer.writeheader()
+            csv_writer.writerows(self.get_tenures_csv(self.tenures[:100]))
+            
+
         officer_infos_path = self.output_dir / 'officer_infos.json'
         for officer_info in self.officer_infos:
             officer_info.language_names = self.translations['names'][officer_info.name]

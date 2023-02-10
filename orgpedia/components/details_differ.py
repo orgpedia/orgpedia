@@ -87,7 +87,7 @@ class DetailsDiffer:
             r = f'{ref[1]}->{new[1]}' if ref[1] != new[1] else ''
             msg = f'[{idx}]{d}{r}'
             diffs.append(msg)
-            errors.append(PostIDDiffError(path=path, msg=f'{verb}: {msg}'))
+            errors.append(PostIDDiffError(path=path, msg=f'{verb}: {msg}', name='PostIDDiff'))
         return diffs, errors
 
     def __call__(self, doc):
@@ -110,7 +110,7 @@ class DetailsDiffer:
             if new_dt != j_order['date']:
                 msg = f'{new_dt}->{j_order["date"]}'
                 print(f'{doc.pdf_name}.date: {msg}')
-                errors.append(OrderDateDiffError(path="date", msg=msg))
+                errors.append(OrderDateDiffError(path="date", msg=msg, name='OrderDateDiff'))
 
             ref_lines = j_order['details']
             for detail_idx, (ref, new) in enumerate(zip(ref_lines, new_lines)):
@@ -119,7 +119,7 @@ class DetailsDiffer:
                 if ref['officer_id'] != new['officer_id']:
                     msg = f'{ref["officer_id"]}->{new["officer_id"]}'
                     diffs.append(f'O: {msg}')
-                    errors.append(OfficerIDDiffError(path=path, msg=msg))
+                    errors.append(OfficerIDDiffError(path=path, msg=msg, name='OfficerIDDiff'))
 
                 for v in ("continues", "relinquishes", "assumes"):
                     verb_diffs, post_errors = self.diff_posts(v, ref[v], new[v], path)
@@ -133,7 +133,8 @@ class DetailsDiffer:
                 short_len = min(len(ref_lines), len(new_lines))
                 for (idx, long) in enumerate(long_lines[short_len:]):
                     path = f'de{short_len+idx}'
-                    errors.append(OfficerIDDiffError(path=path, msg=f'{long["officer_id"]}->Missing'))
+                    errors.append(OfficerIDDiffError(path=path, msg=f'{long["officer_id"]}->Missing',
+                                                     name='OfficerIDDiff'))
 
         doc.add_errors(errors)
         self.lgr.info(f"=={doc.pdf_name}.details_differ {len(doc.order.details)} {DataError.error_counts(errors)}")

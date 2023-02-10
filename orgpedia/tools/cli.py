@@ -34,8 +34,15 @@ def extract(package: str, extract_dir: Path = Writeable_Dir, objects: str = 'all
         return
 
     for package in get_packages(package):
+        package_extract_dir = extract_dir / package
+
+        # when support for objects and stdout is added, this should be removed
+        if package_extract_dir.exists():
+            print(f'data package exists at {package_extract_dir}, skipping')
+            continue
+        
         try:
-            zip_path = Path(pkg_resources.resource_filename(package, 'data'))
+            zip_path = Path(pkg_resources.resource_filename(package, 'data.zip'))
         except ModuleNotFoundError:
             print(f"Error: Unable to locate '{package}'")
             raise typer.Abort()
@@ -43,8 +50,6 @@ def extract(package: str, extract_dir: Path = Writeable_Dir, objects: str = 'all
         if not zip_path.exists():
             print(f"Error: Unable to locate data.zip dir in '{package}'")
             raise typer.Abort()
-
-        package_extract_dir = extract_dir / package
 
         if objects == 'all':
             with ZipFile(zip_path) as zip_file:
@@ -138,18 +143,18 @@ def check():
 
 @app.command()
 def readme():
-    flow_dir, task_dir = flow.get_flow_task_dir()
+    flow_dir, task_dir = get_flow_task_dir()
     if task_dir:
-        task = flow.Task(task_dir, flow_dir)
+        task = Task(task_dir, flow_dir)
         readme_path = task_dir / 'README.md'
         readme_path.write_text(task.show_readme())
     elif flow_dir:
         flow = Flow(flow_dir)        
-        readme_path = flow_dir / 'README.md'
-        readme_path.write_text(flow.show_readme())
         for task in flow.tasks:
             task_readme_path = task.taskDir / 'README.md'
             task_readme_path.write_text(task.show_readme())
+        readme_path = flow_dir / 'README.md'
+        readme_path.write_text(flow.show_readme())
     else:
         print('Unable to locate flow or task directory')
         raise typer.Abort()
@@ -193,8 +198,8 @@ def check(name: str, formal: bool = False):
 
 """
 
-def main() -> Any:
+def main():
     return app()
 
 if __name__ == "__main__":
-    return app()
+    app()

@@ -25,7 +25,7 @@ from ..extracts.orgpedia import (
     IncorrectOrderDateError,
     Officer,
     Order,
-    OrderDateNotFoundErrror,
+    OrderDateNotFoundError,
     OrderDetail,
     Post,
 )
@@ -150,7 +150,7 @@ class TableOrderBuidler:
         errors = []
         if not officer_cell:
             msg = "empty cell"
-            errors.append(TableEmptyBodyCellError(path=path, msg=msg, is_none=True))
+            errors.append(TableEmptyBodyCellError(path=path, msg=msg, is_none=True, name='TableEmptyBodyCell'))
 
         missing_unicodes = make_ascii(officer_cell, self.unicode_dict)
         self.add_missing_unicodes(missing_unicodes)  # save the missing unicodes
@@ -177,11 +177,11 @@ class TableOrderBuidler:
 
             eng_str = ",".join(englist_texts)
             msg = f"English words in officer name: >{eng_str}<"
-            errors.append(EnglishWordsInNameError(msg=msg, path=path))
+            errors.append(EnglishWordsInNameError(msg=msg, path=path, name='EnglishWordsInName'))
 
         if len(officer_text) < 10 or len(officer_text) > 45:
             msg = f"Short officer name: >{officer_text}<"
-            errors.append(IncorrectOfficerNameError(msg=msg, path=path))
+            errors.append(IncorrectOfficerNameError(msg=msg, path=path, name='IncorrectOfficerName'))
 
         if "," in officer_text:
             print(f"Replacing comma {officer_text}")
@@ -244,7 +244,7 @@ class TableOrderBuidler:
         posts, errors = [], []
         if not post_cell:
             msg = "empty cell"
-            errors.append(TableEmptyBodyCellError(path=path, msg=msg, is_none=True))
+            errors.append(TableEmptyBodyCellError(path=path, msg=msg, is_none=True, name='TableEmptyBodyCell'))
 
         missing_unicodes = make_ascii(post_cell, self.unicode_dict)
         self.add_missing_unicodes(missing_unicodes)  # save the missing unicodes
@@ -327,7 +327,7 @@ class TableOrderBuidler:
         errors = []
         if len(row.cells) != 3:
             msg = "Expected: 3 columns Actual: {len(row.cells)}"
-            errors.append(TableMismatchColsError(path, msg))
+            errors.append(TableMismatchColsError(path=path, msg=msg, name='TableMismatchCols'))
 
         officer_cell = row.cells[1] if len(row.cells) > 1 else None
         officer, officer_errors = self.get_officer(officer_cell, f"{path}.ce1")
@@ -373,7 +373,7 @@ class TableOrderBuidler:
             errors = []
             path = "pa0.word_labels.ORDERDATEPLACE"
             msg = f"{doc.pdf_name} text: EMPTY"
-            errors.append(OrderDateNotFoundErrror(path=path, msg=msg))
+            errors.append(OrderDateNotFoundError(path=path, msg=msg, name='OrderDateNotFound'))
             return None, errors
 
         page_idxs = od_labels['page_idx_']
@@ -407,11 +407,11 @@ class TableOrderBuidler:
         if result_dt and (result_dt.year < 1947 or result_dt.year > 2023):
             path = "pa0.word_labels.ORDERDATEPLACE"
             msg = f"{doc.pdf_name} Incorrect date: > today in {date_text}"
-            errors.append(IncorrectOrderDateError(path=path, msg=msg))
+            errors.append(IncorrectOrderDateError(path=path, msg=msg, name='IncorrectOrderDate'))
         elif result_dt is None:
             path = "pa0.word_labels.ORDERDATEPLACE"
             msg = f"{doc.pdf_name} text: >{date_text}<"
-            errors.append(OrderDateNotFoundErrror(path=path, msg=msg))
+            errors.append(OrderDateNotFoundError(path=path, msg=msg, name='OrderDateNotFound'))
 
         if errors:
             print("\n".join(err_details))

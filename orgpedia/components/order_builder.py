@@ -12,7 +12,7 @@ from docint.vision import Vision
 from docint.word_line import words_in_lines
 from more_itertools import first
 
-from ..extracts.orgpedia import IncorrectOrderDateError, Officer, Order, OrderDateNotFoundErrror, OrderDetail
+from ..extracts.orgpedia import IncorrectOrderDateError, Officer, Order, OrderDetail, OrderDateNotFoundError
 
 """
 # TODO:
@@ -255,11 +255,11 @@ class OrderBuilder:
         if result_dt and (result_dt.year < 1947 or result_dt.year > 2023):
             path = "pa0.word_labels.ORDERDATEPLACE"
             msg = f"{doc.pdf_name} Incorrect date: > today in {date_text}"
-            errors.append(IncorrectOrderDateError(path=path, msg=msg))
+            errors.append(IncorrectOrderDateError(path=path, msg=msg, name='IncorrectOrderDateError'))
         elif result_dt is None:
             path = "pa0.word_labels.ORDERDATEPLACE"
             msg = f"{doc.pdf_name} text: >{date_text}<"
-            errors.append(OrderDateNotFoundErrror(path=path, msg=msg))
+            errors.append(OrderDateNotFoundError(path=path, msg=msg, name='OrderDateNotFoundError'))
 
         if errors:
             print("\n".join(err_details))

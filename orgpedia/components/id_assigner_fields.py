@@ -262,7 +262,7 @@ class IDAssignerMultipleFields:
             # idxs = ", ".join(f"{w.path_abbr}->{w.text}<" for w in officer.words)
             match_dobs = ", ".join(o.name for o in birth_date_dict.get(officer.birth_date, []))
             msg = f"{self.conf_stub} {doc.pdf_name} >{name}< |{match_dobs}"
-            errors.append(OfficerIDNotFoundError(path=path, msg=msg))
+            errors.append(OfficerIDNotFoundError(path=path, msg=msg, name='OfficerIDNotFound'))
 
         return officer_id, errors
 

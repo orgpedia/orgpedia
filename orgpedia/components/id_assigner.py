@@ -166,7 +166,7 @@ class IDAssigner:
         if not officer_id:
             idxs = ", ".join(f"{w.path_abbr}->{w.text}<" for w in officer.words)
             msg = f"name: {doc.pdf_name} >{name}< {idxs}"
-            errors.append(OfficerIDNotFoundError(path=path, msg=msg))
+            errors.append(OfficerIDNotFoundError(path=path, msg=msg, name='OfficerIDNotFound'))
 
         return officer_id, errors
 
