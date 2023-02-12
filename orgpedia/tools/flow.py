@@ -131,6 +131,8 @@ class Task:
                 self.errors.setdefault(name, []).extend(json_doc.get('errors', {}).get(name, []))
                 self.edits.setdefault(name, []).extend(json_doc.get('edits', {}).get(name, []))
 
+        print(f'{self.name}: pages: {self.total_pages}')
+
         self.check_computed = True
 
     def get_ext_counts(self, file_paths):
@@ -465,7 +467,7 @@ class Flow:
         self.populateDownstream()
 
         self.headTasks = [t for t in self.tasks if not t.upstream]
-        self.tailTasks = [t for t in self.tasks if not t.downstreamTasks]
+        self.tailTasks = [t for t in self.valid_tasks if not t.downstreamTasks]
         self.populateExportDir()
 
     def _buildTasks(self):
@@ -490,7 +492,7 @@ class Flow:
         return sum(len(ht.iptFiles) for ht in self.headTasks)
 
     def get_total_export_docs(self):
-        return sum(len(tt.optFiles) for tt in self.tailTasks)
+        return sum(len(get_pdf_files(tt.optFiles)) for tt in self.tailTasks)
 
     def get_total_import_pages(self):
         return sum(ht.total_pages for ht in self.headTasks)
@@ -616,7 +618,7 @@ class Flow:
         s += f'- Errors: {total_errors:,d}\n'
         s += f'- Edits: {total_edits:,d}\n'
         s += '-  \n'
-        s += f'- Edits per Page: {total_edits/self.get_total_export_pages():.4f}\n'
+        s += f'- Edits per Page: **{total_edits/self.get_total_export_pages():.4f}**\n'
         return s
 
     def show_readme(self):
@@ -689,10 +691,10 @@ if __name__ == "__main__":
             readme_path.write_text(flow.show_readme())
         elif len(sys.argv) > 1 and sys.argv[1] == 'readme_all':
             readme_path = flow_dir / 'README.md'
-            readme_path.write_text(flow.show_readme())
             for task in flow.valid_tasks:
                 task_readme_path = task.taskDir / 'README.md'
                 task_readme_path.write_text(task.show_readme())
+            readme_path.write_text(flow.show_readme())
         else:
             # print(flow.show_readme())
             # print(flow.show_summary())
