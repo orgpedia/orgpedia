@@ -20,7 +20,7 @@ def get_all_exts(path):
 
 def get_link_src(target):
     assert target.is_symlink(), f'{target} not a symlink'
-    src = pathlib.Path(os.readlink(target))
+    src = pathlib.Path(os.readlink(src(target)))
     if '..' in src.parts:
         targetParts = list(target.parent.parts)
         for part in src.parts:
@@ -360,7 +360,7 @@ class Task:
     def check_files(self):
         def is_empty(yml_file):
             assert yml_file.name.endswith('yml')
-            yml_dict = yaml.load(yml_file.read_text(), Loader=yaml.FullLoader)
+            yml_dict = yaml.load(yml_file.read_text(encoding='utf-8'), Loader=yaml.FullLoader)
             return True if not yml_dict else False
 
         # opt_ext_counts = self.get_ext_counts(self.optFiles)
