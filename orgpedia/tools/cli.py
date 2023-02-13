@@ -18,22 +18,15 @@ app = typer.Typer()
 
 @app.command()
 def extract(package: str, extract_dir: Path = Writeable_Dir, objects: str = 'all'):
-    def get_packages(package):
-        if package == 'orgpedia_installed':
-            installed = pkg_resources.working_set
-            return [p.key for p in installed if p.key.startswith('orgpedia-')]
-        elif package.startswith('orgpedia-'):
-            return package
-        else:
-            installed = pkg_resources.working_set
-            return [p.key for p in installed if p.key == package]
-
-    packages = get_packages(package)
+    packages = [package]
     if not packages:
         print('No packages to import.')
         return
 
-    for package in get_packages(package):
+    for package in packages:
+        # https://stackoverflow.com/questions/54597212
+        package = package.replace('-', '_')
+
         package_extract_dir = extract_dir / package
 
         # when support for objects and stdout is added, this should be removed
