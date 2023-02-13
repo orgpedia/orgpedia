@@ -37,11 +37,11 @@ def extract(package: str, extract_dir: Path = Writeable_Dir, objects: str = 'all
         try:
             zip_path = Path(pkg_resources.resource_filename(package, 'data.zip'))
         except ModuleNotFoundError:
-            print(f"Error: Unable to locate '{package}'")
+            print(f"Error: Unable to locate: '{package}'")
             raise typer.Abort()
 
         if not zip_path.exists():
-            print(f"Error: Unable to locate data.zip dir in '{package}'")
+            print(f"Error: Unable to locate data.zip dir: in '{package}'")
             raise typer.Abort()
 
         if objects == 'all':
