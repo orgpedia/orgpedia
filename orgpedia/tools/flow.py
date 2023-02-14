@@ -20,7 +20,7 @@ def get_all_exts(path):
 
 def get_link_src(target):
     assert target.is_symlink(), f'{target} not a symlink'
-    src = pathlib.Path(os.readlink(src(target)))
+    src = pathlib.Path(os.readlink(str(target)))
     if '..' in src.parts:
         targetParts = list(target.parent.parts)
         for part in src.parts:
@@ -121,6 +121,10 @@ class Task:
             return
 
         output_ext, _ = self.get_output_ext_counts()
+        if 'json' not in output_ext:
+            self.check_computed = True
+            return
+        
         doc_files = [p for p in self.optFiles if output_ext in p.name]
 
         for doc_file in doc_files:
@@ -598,6 +602,9 @@ class Flow:
         s += '\n'.join(f'\tclick {d} "{repo_url}/{d}" "{d}";' for d in imp_exp_links)
         s += '\n```\n'
 
+        if self.get_total_export_pages() == 0:
+            return s
+
         s += f'## Unprocessed Documents: {total_unprocessed}\n'
         s += '### Ignored Documents:\n'
         s += '\n'.join(f'  - [{k}]({k}): {v}' for (k, v) in self.ignore_files.items())
@@ -618,7 +625,8 @@ class Flow:
         s += f'- Errors: {total_errors:,d}\n'
         s += f'- Edits: {total_edits:,d}\n'
         s += '-  \n'
-        s += f'- Edits per Page: **{total_edits/self.get_total_export_pages():.4f}**\n'
+        if self.get_total_export_pages() > 0:
+            s += f'- Edits per Page: **{total_edits/self.get_total_export_pages():.4f}**\n'
         return s
 
     def show_readme(self):

@@ -923,8 +923,8 @@ class WebsiteLanguageGenerator:
             self.depts = []
 
         ### TODO CHANGE THIS, to read from input file
-        # self.languages = LANG_CODES
-        self.languages = ['en', 'hi']
+        self.languages = LANG_CODES
+        #self.languages = ['en', 'hi']
 
         self.officer_info_dict = self.get_officer_infos(self.officer_info_files)
         print(f"#Officer_info: {len(self.officer_info_dict)}")
