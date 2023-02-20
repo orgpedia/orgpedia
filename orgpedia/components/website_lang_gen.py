@@ -17,6 +17,8 @@ from dateutil import parser
 from docint.vision import Vision
 from more_itertools import first, flatten
 
+from orgpedia.extracts.orgpedia import Order, Tenure
+
 # from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 # TODO
@@ -107,6 +109,9 @@ def format_lang_date(dt, lang, pattern_str):
 
 
 def lang_year(dt, lang):
+    if lang == 'en':
+        return str(dt)
+
     if dt == "to_date" or dt >= RUN_END_DATE.year:
         return TODATE_DICT[lang]
     else:
@@ -891,6 +896,8 @@ LANG_CODES = [
         "translation_file": "conf/trans.yml",
         "post_infos_file": "conf/post_infos.json",
         "template_stub": "miniHTML",
+        "tenures_file": "input/tenures.json",
+        "orders_file": "input/orders.json",
     },
 )
 class WebsiteLanguageGenerator:
@@ -905,6 +912,8 @@ class WebsiteLanguageGenerator:
         translation_file,
         post_infos_file,
         template_stub,
+        tenures_file,
+        orders_file,
     ):
         self.conf_dir = Path(conf_dir)
         self.conf_stub = conf_stub
@@ -914,6 +923,8 @@ class WebsiteLanguageGenerator:
         self.languages = languages
         self.translation_file = Path(translation_file)
         self.post_infos_path = Path(post_infos_file)
+        self.tenures_file = Path(tenures_file)
+        self.orders_file = Path(orders_file)
 
         if self.post_infos_path.exists():
             post_infos = json.loads(self.post_infos_path.read_text())
@@ -924,7 +935,7 @@ class WebsiteLanguageGenerator:
 
         ### TODO CHANGE THIS, to read from input file
         self.languages = LANG_CODES
-        #self.languages = ['en', 'hi']
+        # self.languages = ['en', 'hi']
 
         self.officer_info_dict = self.get_officer_infos(self.officer_info_files)
         print(f"#Officer_info: {len(self.officer_info_dict)}")
@@ -1855,15 +1866,18 @@ class WebsiteLanguageGenerator:
 
     def pipe(self, docs, **kwargs):
         self.add_log_handler()
-        docs = list(docs)
+        # docs = list(docs)
         print("Entering website builder")
         self.lgr.info("Entering website builder")
 
-        self.lgr.info(f"Handling #docs: {len(docs)}")
+        # self.lgr.info(f"Handling #docs: {len(docs)}")
 
         self.write_top_pages()
 
-        orders = [doc.order for doc in docs if doc.order.date]
+        # orders = [doc.order for doc in docs if doc.order.date]
+        orders = json.loads(self.orders_file.read_text())
+        orders = [Order.from_dict(o) for o in orders]
+
         orders.sort(key=attrgetter("date"))
         self.order_dict = dict((o.order_id, o) for o in orders)
         self.order_idx_dict = dict((o.order_id, i) for (i, o) in enumerate(orders))
@@ -1872,7 +1886,10 @@ class WebsiteLanguageGenerator:
 
         self.post_dict = dict((p.post_id, p) for o in orders for p in o.get_posts())
 
-        self.tenures = list(flatten(doc.tenures for doc in docs))
+        # self.tenures = list(flatten(doc.tenures for doc in docs))
+        self.tenures = json.loads(self.tenures_file.read_text())
+        self.tenures = [Tenure(**t) for t in self.tenures]
+
         self.tenures.sort(key=attrgetter("tenure_id"))
         self.tenure_dict = dict((t.tenure_id, t) for t in self.tenures)
 
@@ -1895,9 +1912,9 @@ class WebsiteLanguageGenerator:
         self.gen_officers_page()
         self.gen_orders_page()
 
-        print('Generating Details')
-        if self.has_ministry():
-            [self.gen_details_page(doc) for doc in docs]
+        # print('Generating Details')
+        # if self.has_ministry():
+        #     [self.gen_details_page(doc) for doc in docs]
 
         print('Writing Search Index')
         self.write_search_index()

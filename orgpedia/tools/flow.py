@@ -121,10 +121,10 @@ class Task:
             return
 
         output_ext, _ = self.get_output_ext_counts()
-        if 'json' not in output_ext:
+        if output_ext and 'json' not in output_ext:
             self.check_computed = True
             return
-        
+
         doc_files = [p for p in self.optFiles if output_ext in p.name]
 
         for doc_file in doc_files:

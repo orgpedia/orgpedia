@@ -60,6 +60,11 @@ class Officer(Region):
             word_lines_idxs=[word_idxs],
         )
 
+    @classmethod
+    def from_dict(cls, json_dict):
+        json_dict['word_idxs'] = []
+        return Officer(**json_dict)
+
 
 class Post(Region):
     post_str: str
@@ -228,6 +233,11 @@ class Post(Region):
             stat_spans=[],
         )
 
+    @classmethod
+    def from_dict(cls, json_dict):
+        json_dict['word_idxs'] = []
+        return Post(**json_dict)
+
 
 class OrderDetail(Region):
     officer: Officer
@@ -235,13 +245,15 @@ class OrderDetail(Region):
     relinquishes: List[Post] = []
     assumes: List[Post] = []
     detail_idx: int
+    detail_page_idx: int
 
     is_valid: bool = True
     path: str = ""
 
     @property
     def page_idx(self):
-        return self.words[0].page_idx
+        # return self.words[0].page_idx
+        return self.detail_page_idx
 
     @property
     def officer_id(self):
@@ -273,6 +285,7 @@ class OrderDetail(Region):
             relinquishes=relinquishes,
             assumes=assumes,
             detail_idx=detail_idx,
+            detail_page_idx=page_idx,
         )
 
     def to_str(self, print_color=False):
@@ -346,6 +359,26 @@ class OrderDetail(Region):
             d[verb] = [p.dict(exclude={'word_idxs', 'page_idx_'}) for p in getattr(self, verb)]
         return d
 
+    @classmethod
+    def from_dict(cls, json_dict):
+        officer = Officer.from_dict(json_dict['officer'])
+
+        verb_dict = {}
+        for verb in ['continues', 'relinquishes', 'assumes']:
+            verb_dict[verb] = [Post.from_dict(p) for p in json_dict.get(verb, [])]
+
+        order = cls.build(
+            [],
+            [],
+            officer,
+            json_dict['detail_idx'],
+            verb_dict['continues'],
+            verb_dict['relinquishes'],
+            verb_dict['assumes'],
+        )
+        order.detail_page_idx = json_dict['detail_page_idx']
+        return order
+
 
 class IncorrectOrderDateError(DataError):
     pass
@@ -412,6 +445,17 @@ class Order(Region):
         d = self.dict(exclude={'word_idxs', 'page_idx_'})
         d['details'] = [d.export() for d in self.details]
         return d
+
+    @classmethod
+    def from_dict(self, json_dict):
+        def to_date(s):
+            return datetime.date(year=int(s[:4]), month=int(s[5:7]), day=int(s[8:]))
+
+        details = [OrderDetail.from_dict(d) for d in json_dict['details']]
+        order_date = to_date(json_dict['date'])
+        order = Order.build(json_dict['order_id'], order_date, '', details)
+        order.category = json_dict['category']
+        return order
 
 
 # If it is not extending Region should it still be there, yes as it will be moved to Orgpeida

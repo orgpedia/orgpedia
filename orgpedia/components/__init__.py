@@ -17,3 +17,4 @@ from .tenure_builder import TenureBuilder
 from .tenure_writer import TenureWriter
 from .website_gen import WebsiteGenerator
 from .website_lang_gen import WebsiteLanguageGenerator
+from .website_details import WebsiteDetailGenerator
