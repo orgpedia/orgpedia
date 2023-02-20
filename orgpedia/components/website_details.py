@@ -292,4 +292,5 @@ class WebsiteDetailGenerator:
         self.add_log_handler()
         order_info = self.build_orderinfo(doc.order)
         self.gen_details_page(doc, order_info)
+        self.remove_log_handler()
         return doc
