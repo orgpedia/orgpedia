@@ -269,10 +269,13 @@ class OrderDetail(Region):
         continues=[],
         relinquishes=[],
         assumes=[],
+        page_idx=None, # Todo need to remove this...
     ):
         word_idxs = [w.word_idx for w in words]
-        page_idx = words[0].page_idx if words else None
         word_lines_idxs = [[w.word_idx for w in wl] for wl in word_lines]
+
+        if page_idx is None:
+            page_idx = words[0].page_idx if words else None
 
         return OrderDetail(
             words=words,
@@ -375,8 +378,8 @@ class OrderDetail(Region):
             verb_dict['continues'],
             verb_dict['relinquishes'],
             verb_dict['assumes'],
+            json_dict['detail_page_idx'],
         )
-        order.detail_page_idx = json_dict['detail_page_idx']
         return order
 
 
