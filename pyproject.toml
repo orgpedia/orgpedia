@@ -157,7 +157,7 @@ commands =
 [tool.ruff]
 # Enable Pyflakes `E` and `F` codes by default.
 select = ["E", "F", "W", "I001"]
-ignore = []
+ignore = [ "E501", "F401", "E741" ]
 
 # Allow autofix for all enabled rules (when `--fix`) is provided.
 fixable = ["I001"] # fix only isort issues

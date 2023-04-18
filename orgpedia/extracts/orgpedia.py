@@ -188,7 +188,7 @@ class Post(Region):
         stat_hpath = stat.hierarchy_path if stat else []
 
         word_idxs = [w.word_idx for w in words]
-        page_idx = words[0].page_idx if words else None
+        page_idx = words[0].page_idx if words else 0
 
         return Post(
             words=words,
@@ -247,6 +247,9 @@ class OrderDetail(Region):
     detail_idx: int
     detail_page_idx: int
 
+    promoted_from: Union[Post, None] = None
+    promoted_to: Union[Post, None] = None
+
     is_valid: bool = True
     path: str = ""
 
@@ -269,7 +272,7 @@ class OrderDetail(Region):
         continues=[],
         relinquishes=[],
         assumes=[],
-        page_idx=None, # Todo need to remove this...
+        page_idx=None,  # Todo need to remove this...
     ):
         word_idxs = [w.word_idx for w in words]
         word_lines_idxs = [[w.word_idx for w in wl] for wl in word_lines]

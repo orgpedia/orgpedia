@@ -1,7 +1,5 @@
-import datetime
 import json
 import logging
-import string
 import sys
 from pathlib import Path
 
@@ -11,13 +9,13 @@ from more_itertools import first, flatten
 
 from .website_lang_gen import (
     DetailInfo,
-    OfficerInfo,
-    OrderInfo,
-    MinistryInfo,
     DetailPipeInfo,
     LabelsInfo,
-    lang_year,
-    format_lang_date,
+    MinistryInfo,
+    OfficerInfo,
+    OrderInfo,
+    format_lang_date,  # noqa
+    lang_year,  # noqa
 )
 
 DIGIT_LANG_DICT = {}

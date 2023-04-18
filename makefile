@@ -4,11 +4,11 @@ sources = orgpedia tests
 test: format lint unittest
 
 format:
-	isort $(sources)
 	black $(sources)
+	ruff $(sources)
 
 lint:
-	flake8 $(sources)
+	ruff $(sources)
 
 unittest:
 	pytest

@@ -14,6 +14,7 @@ from more_itertools import flatten
 
 from ..extracts.orgpedia import OfficerID, Order, Tenure
 
+
 # b /Users/mukund/Software/docInt/docint/pipeline/id_assigner.py:34
 
 
@@ -111,6 +112,10 @@ class TenureWriter:
         # for doc in docs:
         #     doc.remove_all_extra_fields(except_fields=['order', 'tenures', 'words', 'lines', 'page_image'])
 
+        # export removes region fields from docs, region is the parent class for all extracts
+        orders = [d.order.export() for d in docs]
+        (self.output_dir / 'orders.json').write_text(json.dumps(orders, default=pydantic.json.pydantic_encoder))
+
         self.tenures = list(flatten(doc.tenures for doc in docs))
         for tenure in self.tenures:
             if tenure.end_order_id == "" and tenure.end_date == datetime.date.today():
@@ -148,8 +153,8 @@ class TenureWriter:
         (self.output_dir / 'post_infos.json').write_text(json.dumps(post_infos, default=pydantic.json.pydantic_encoder))
 
         # export removes region fields from docs, region is the parent class for all extracts
-        orders = [d.order.export() for d in docs]
-        (self.output_dir / 'orders.json').write_text(json.dumps(orders, default=pydantic.json.pydantic_encoder))
+        # orders = [d.order.export() for d in docs]
+        # (self.output_dir / 'orders.json').write_text(json.dumps(orders, default=pydantic.json.pydantic_encoder))
 
         ministries = yaml.load((self.conf_dir / 'ministries.yml').read_text(), Loader=yaml.FullLoader)
         (self.output_dir / 'ministries.json').write_text(json.dumps(ministries, default=pydantic.json.pydantic_encoder))
