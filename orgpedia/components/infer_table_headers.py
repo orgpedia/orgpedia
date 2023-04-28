@@ -86,7 +86,7 @@ class InferTableHeaders:
             tables = getattr(page, 'tables', [])
             for (table_idx, table) in enumerate(tables):
                 if not table.header_rows:
-                    assert last_table_header_info, f'Mismatch on {page.page_idx} -> {table_idx}'
+                    assert last_table_header_info, f'Header not found {page.page_idx} -> {table_idx}'
                     assert (
                         table.num_columns == last_table_header_info.num_columns
                     ), f'Cols page:{page.page_idx}[{table_idx}] {table.num_columns} != {last_table_header_info.num_columns}'

@@ -23,6 +23,14 @@ class OfficerIDNotFoundError(DataError):
     pass
 
 
+class IncorrectPostError(DataError):
+    pass
+
+
+class IncorrectOrderCategory(DataError):
+    pass
+
+
 class Officer(Region):
     salut: str
     name: str
@@ -64,6 +72,10 @@ class Officer(Region):
     def from_dict(cls, json_dict):
         json_dict['word_idxs'] = []
         return Officer(**json_dict)
+
+    @property
+    def name_nows(self):
+        return self.name.replace(" ", "")
 
 
 class Post(Region):
@@ -245,7 +257,7 @@ class OrderDetail(Region):
     relinquishes: List[Post] = []
     assumes: List[Post] = []
     detail_idx: int
-    detail_page_idx: int
+    detail_page_idx: int = None
 
     promoted_from: Union[Post, None] = None
     promoted_to: Union[Post, None] = None
@@ -381,7 +393,7 @@ class OrderDetail(Region):
             verb_dict['continues'],
             verb_dict['relinquishes'],
             verb_dict['assumes'],
-            json_dict['detail_page_idx'],
+            json_dict.get('detail_page_idx', None),
         )
         return order
 
@@ -569,6 +581,9 @@ class OfficerID(BaseModel):
     @classmethod
     def from_disk(self, json_file):
         json_file = Path(json_file)
+        if not json_file.exists():
+            return []
+
         if json_file.suffix.lower() in (".json", ".jsn"):
             officer_jsons = json.loads(json_file.read_text())
         elif json_file.suffix.lower() in (".yml", ".yaml"):
@@ -588,6 +603,17 @@ class OfficerID(BaseModel):
         officerID = officerIDs[path_detail_idx]
 
         return [officerID]
+
+    @classmethod
+    def build(self, officer, officer_id):
+        return OfficerID(
+            officer_idx=-1,
+            officer_id=officer_id,
+            salut=officer.salut,
+            name=officer.name,
+            cadre=officer.cadre,
+            full_name=officer.full_name,
+        )
 
 
 class PostID(BaseModel):

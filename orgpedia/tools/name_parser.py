@@ -1,29 +1,43 @@
-SALUTATIONS = ["Mr.", "Mrs.", "Ms.", "Dr.", "Prof."]
+from more_itertools import first
+
+SALUTATIONS = ["Mrs", "Mr", "Ms", "Dr", "Prof", "Miss"]
 
 
 class NameParser:
+    def __init__(self, extra_salutations=[]):
+        all_salutations = sorted(SALUTATIONS + extra_salutations, key=len, reverse=True)
+
+        self.expanded_salutations = []
+        for s in all_salutations:
+            s = s.lower()
+            p = f"{s} .-{s} -{s}. -({s}) -({s}.) -({s}.)-{s}."
+            self.expanded_salutations.extend(p.split("-"))
+
     def parse(self, name):
-        # remove any parentheses from the name
-        name = name.replace("(", "").replace(")", "")
+        # remove salutation first
+        name_lower = name.lower()
+
+        saluts = self.expanded_salutations
+        found_salut = first([s for s in saluts if name_lower.startswith(s)], "")
+        salutation = name[: len(found_salut)]
+        salutation = salutation.strip()
+
+        remaining_name = name[len(found_salut) :]
+
         # split the name by spaces
-        parts = name.split()
-        # initialize the attributes of the Name object
-        salutation = ""
+        parts = remaining_name.split()
         first_name = ""
         last_name = ""
         initials = []
 
         # loop through the parts of the name
         for part in parts:
-            # if the part is in the salutations list, assign it to salutation
-            if part in SALUTATIONS:
-                salutation = part
-            # else if the part is one letter followed by a dot, add it to initials
-            elif len(part) == 2 and part.endswith("."):
+            # if the part is one letter followed by a dot, add it to initials
+            if len(part) == 2 and part.endswith("."):
                 initials += [part]
             # else if the part is not the last one, assign it to first_name
             elif part != parts[-1]:
-                first_name = part
+                first_name = part if not first_name else f'{first_name} {part}'
             # else assign it to last_name
             else:
                 last_name = part
