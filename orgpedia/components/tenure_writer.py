@@ -67,7 +67,10 @@ class TenureWriter:
             hierarchy = Hierarchy(hierarchy_path)
             self.hierarchy_dict[field] = hierarchy
 
-        self.translations = yaml.load(self.translations_file.read_text(), Loader=yaml.FullLoader)
+        if self.translations_file.exists():
+            self.translations = yaml.load(self.translations_file.read_text(), Loader=yaml.FullLoader)
+        else:
+            self.translations = {}
 
         self.lgr = logging.getLogger(__name__)
         self.lgr.setLevel(logging.DEBUG)
@@ -135,7 +138,10 @@ class TenureWriter:
 
         officer_infos_path = self.output_dir / 'officer_infos.json'
         for officer_info in self.officer_infos:
-            officer_info.language_names = self.translations['names'][officer_info.name]
+            if self.translations:
+                officer_info.language_names = self.translations['names'][officer_info.name]
+            else:
+                officer_info.language_names = []
 
         self.officer_infos.sort(key=attrgetter('officer_id'))
         officer_infos_path.write_text(json.dumps(self.officer_infos, default=pydantic.json.pydantic_encoder))
@@ -144,6 +150,9 @@ class TenureWriter:
         for field in self.hierarchy_files:
             post_infos[field] = self.hierarchy_dict[field].to_dict()
             names = self.hierarchy_dict[field].get_names()  # we should remove aliases, like we are doing in officers
+
+            if not self.translations:
+                continue
 
             missing_names = [n for n in names if n not in self.translations[field]]
             if missing_names:
@@ -156,8 +165,11 @@ class TenureWriter:
         # orders = [d.order.export() for d in docs]
         # (self.output_dir / 'orders.json').write_text(json.dumps(orders, default=pydantic.json.pydantic_encoder))
 
-        ministries = yaml.load((self.conf_dir / 'ministries.yml').read_text(), Loader=yaml.FullLoader)
-        (self.output_dir / 'ministries.json').write_text(json.dumps(ministries, default=pydantic.json.pydantic_encoder))
+        if (self.conf_dir / 'ministries.yml').exists():
+            ministries = yaml.load((self.conf_dir / 'ministries.yml').read_text(), Loader=yaml.FullLoader)
+            (self.output_dir / 'ministries.json').write_text(
+                json.dumps(ministries, default=pydantic.json.pydantic_encoder)
+            )
 
         order_path = self.output_dir / "order.schema.json"
         order_path.write_text(Order.schema_json(indent=2))

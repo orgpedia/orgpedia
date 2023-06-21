@@ -4,7 +4,7 @@ SALUTATIONS = ["Mrs", "Mr", "Ms", "Dr", "Prof", "Miss"]
 
 
 class NameParser:
-    def __init__(self, extra_salutations=[]):
+    def __init__(self, extra_salutations=[], expansions={}):
         all_salutations = sorted(SALUTATIONS + extra_salutations, key=len, reverse=True)
 
         self.expanded_salutations = []
@@ -12,6 +12,8 @@ class NameParser:
             s = s.lower()
             p = f"{s} .-{s} -{s}. -({s}) -({s}.) -({s}.)-{s}."
             self.expanded_salutations.extend(p.split("-"))
+
+        self.expansions = expansions
 
     def parse(self, name):
         # remove salutation first
@@ -23,6 +25,9 @@ class NameParser:
         salutation = salutation.strip()
 
         remaining_name = name[len(found_salut) :]
+
+        for (small, big) in self.expansions.items():
+            remaining_name = remaining_name.replace(small, big)
 
         # split the name by spaces
         parts = remaining_name.split()

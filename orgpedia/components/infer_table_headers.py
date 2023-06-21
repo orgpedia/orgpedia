@@ -25,9 +25,14 @@ class TableHeaderInfo(BaseModel):
         return any(table_type in t for t in self.header_types)
 
     def get_index(self, header_type):
-        idxs = [i for i, t in enumerate(self.header_types) if header_type in t]
+        if header_type == 'posting':
+            idxs = [i for i, t in enumerate(self.header_types) if header_type == t]
+        else:
+            idxs = [i for i, t in enumerate(self.header_types) if header_type in t]
+
         if len(idxs) > 1:
-            raise ValueError(f'Multiple types found for {header_type}')
+            print(f'Multiple types found for {header_type}')
+            return None
         return idxs[0] if idxs else None
 
     def get_type(self, idx):
@@ -86,7 +91,10 @@ class InferTableHeaders:
             tables = getattr(page, 'tables', [])
             for (table_idx, table) in enumerate(tables):
                 if not table.header_rows:
-                    assert last_table_header_info, f'Header not found {page.page_idx} -> {table_idx}'
+                    first_cell_text = table.body_rows[0].cells[0].text
+                    assert (
+                        last_table_header_info
+                    ), f'Header not found {page.page_idx} -> {table_idx} >{first_cell_text}<'
                     assert (
                         table.num_columns == last_table_header_info.num_columns
                     ), f'Cols page:{page.page_idx}[{table_idx}] {table.num_columns} != {last_table_header_info.num_columns}'

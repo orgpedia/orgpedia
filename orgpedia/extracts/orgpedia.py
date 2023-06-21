@@ -78,8 +78,21 @@ class Officer(Region):
         return self.name.replace(" ", "")
 
 
+class PostEmptyDeptAndJuriError(DataError):
+    pass
+
+
+class PostEmptyRoleError(DataError):
+    pass
+
+
+class PostUnmatchedTextsError(DataError):
+    texts: List[str]
+
+
 class Post(Region):
     post_str: str
+    orig_str: str = None
 
     dept_hpath: List[str] = []
     role_hpath: List[str] = []
@@ -152,6 +165,25 @@ class Post(Region):
             if field_hpath:
                 pLines.append(f"{field}: {p_s(field_hpath)}")
         return "\n".join(pLines)
+
+    def to_short_str(self):
+        def p_s(hpath):
+            return hpath[-1] if hpath else ""
+
+        def p_l(hpath):
+            return "->".join(hpath[1:]) if hpath else ""
+
+        pLines = []
+        pLines.append(f"role:{p_s(self.role_hpath)}")
+        pLines.append(f"dept:{p_s(self.dept_hpath)}")
+        for field in ["juri", "loca", "stat"]:
+            field_hpath = getattr(self, f"{field}_hpath")
+            if field_hpath:
+                if field == "juri":
+                    pLines.append(f"{field}:{p_l(field_hpath)}")
+                else:
+                    pLines.append(f"{field}:{p_s(field_hpath)}")
+        return "|".join(pLines)
 
     def to_str2(self, indent=""):
         def p_s(hpath):

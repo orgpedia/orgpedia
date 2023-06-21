@@ -109,8 +109,8 @@ def format_lang_date(dt, lang, pattern_str):
 
 
 def lang_year(dt, lang):
-    if lang == 'en':
-        return str(dt)
+    # if lang == 'en':
+    #     return str(dt)
 
     if dt == "to_date" or dt >= RUN_END_DATE.year:
         return TODATE_DICT[lang]
@@ -1761,6 +1761,10 @@ class WebsiteLanguageGenerator:
 
         all_idxs = [g[0].get_ministry_years_str() for g in order_groups]
         all_ministries = [g[0].ministry for g in order_groups]
+
+        import pdb
+
+        pdb.set_trace()
 
         order_group_infos = []
         for order_group in order_groups:

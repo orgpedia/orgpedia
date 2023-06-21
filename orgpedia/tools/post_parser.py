@@ -54,7 +54,7 @@ class PostParser:
         noparse_file_dict = read_config_from_disk(noparse_file)
         return dict((p["post"], rev(p["info"])) for p in noparse_file_dict["posts"])
 
-    def handle_juri(self, post_str, dept_sg, role_sg, juri_sgs):  # noqa: C901
+    def handle_juri(self, post_str, dept_sg, role_sg, juri_sgs, post_path):  # noqa: C901
         def is_commissioner_role(role_sg):
             return "Commissioner" in role_sg.hierarchy_path if role_sg else False
 
@@ -63,7 +63,7 @@ class PostParser:
 
         def get_commisionerate(post_str):
             post_str = post_str.lower()
-            assert "jaipur" in post_str or "jodhpur" in post_str, f"No commissionerate: {post_str}"
+            assert "jaipur" in post_str or "jodhpur" in post_str, f"{post_path} No commissionerate: {post_str}"
             # print("** ERROR No commissionerate: {post_str}")
             comm_city = "jaipur" if "jaipur" in post_str else "jodhpur"
             comm_name = f"{comm_city} commissionerate"
@@ -128,7 +128,7 @@ class PostParser:
             self.lgr.debug(f"\tJuri: dept_has_juri_label: {Hierarchy.to_str(sel_sgs)}")
             assert (
                 len(sel_sgs) <= 1
-            ), f"label: {label} {len(sel_sgs)} span_groups: {post_str} {Hierarchy.to_str(sel_sgs)}"
+            ), f"{post_path} label: {label} {len(sel_sgs)} span_groups: {post_str} {Hierarchy.to_str(sel_sgs)}"
             return sel_sgs
         else:
             sub_path = ["jurisdiction", "policing"]
@@ -149,7 +149,7 @@ class PostParser:
                     print(f"== Multiple {post_str} {len(sel_sgs)}")
                     for sg in sel_sgs:
                         print(f"\t{sg.new_str()} {sg.sum_match_len} {sg.sum_span_len}", end="")
-                        print("{sg.sum_span_len_start} {sg.hierarchy_path}")
+                        print(f"{sg.sum_span_len_start} {sg.hierarchy_path}")
 
                     sel_sgs = sel_sgs[:1]
 
@@ -247,7 +247,7 @@ class PostParser:
             if field == "juri" and span_groups:
                 dept_sg = first(field_dict["dept"], None)
                 role_sg = first(field_dict["role"], None)
-                sgs = self.handle_juri(post_str, dept_sg, role_sg, span_groups)
+                sgs = self.handle_juri(post_str, dept_sg, role_sg, span_groups, post_path)
                 field_dict["juri"] = sgs
 
             h_paths = [sg.hierarchy_path for sg in field_dict[field]]
