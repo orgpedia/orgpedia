@@ -1,6 +1,7 @@
 import json  # noqa
 import shutil
 import subprocess
+import datetime
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -8,7 +9,10 @@ import pkg_resources
 import typer
 import yaml
 
+from more_itertools import first, last
+
 from orgpedia.tools.flow import Flow, Task, get_flow_task_dir
+from docint.util import get_repo_dir
 
 Writeable_Dir = typer.Argument(..., exists=True, file_okay=False, writable=True, resolve_path=False)
 Readable_Dir = typer.Argument(..., exists=True, file_okay=False, readable=True, resolve_path=False)
@@ -167,6 +171,54 @@ def readme():
     else:
         print('Unable to locate flow or task directory')
         raise typer.Abort()
+
+
+@app.command()
+def readme_mah():
+    def date_str(dt):
+        if isinstance(dt, str):
+            d, m, y = dt.split('-')
+            dt = datetime.date(year=int(y), month=int(m), day=int(d))
+        return dt.strftime('%d %B %Y')
+
+    repo_dir = get_repo_dir()
+    if not repo_dir:
+        print('Unable to locate the repo dir, quitting....')
+        typer.Abort()
+
+    print(repo_dir)
+
+    documents_file = repo_dir / Path('import') / Path('documents') / 'documents.json'
+    documents_dict = json.loads(documents_file.read_text())
+
+    f, l = first(documents_dict.values(), None), last(documents_dict.values(), None)
+
+    first_url, last_url = f'[{f["code"]}]({f["url"]})', f'[{l["code"]}]({l["url"]})'
+    first_date_str, last_date_str = date_str(f['date']), date_str(l['date'])
+
+    insert_lines = ["## Data Details"]
+    insert_lines += [f"First Order: {first_url} - {first_date_str}"]
+    insert_lines += [f"Last Order: {last_url} - {last_date_str}"]
+    insert_lines += [f"Last Crawl Date: {l['crawl_dir']}"]
+    insert_lines += [f"Total Order: {len(documents_dict)}"]
+
+    # Identify the number of translated files
+    output_dir = repo_dir / Path('flow') / Path('writeTxt_') / Path('outupt')
+    en_files = output_dir.glob('*.en.txt')
+    insert_lines += [f"Total Translated Orders: {len(list(en_files))}"]
+    insert_lines += ['']
+
+    readme_file = repo_dir / "README.md"
+
+    readme_lines = readme_file.read_text().split("\n")
+    if '## Data Details' in readme_lines:
+        s_idx, e_idx = readme_lines.index("## Data Details"), readme_lines.index("## Data Processing")
+        readme_lines = readme_lines[:s_idx] + insert_lines + readme_lines[e_idx:]
+    else:
+        ins_idx = readme_lines.index("## Data Processing")
+        readme_lines = readme_lines[:ins_idx] + insert_lines + readme_lines[ins_idx:]
+
+    readme_file.write_text("\n".join(readme_lines))
 
 
 """
