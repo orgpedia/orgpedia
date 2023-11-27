@@ -1,3 +1,4 @@
+import bisect
 import datetime
 import json
 import logging
@@ -217,7 +218,12 @@ class TenureBuilder:
         for m in self.ministry_dict["ministries"]:
             if m["start_date"] <= date < m["end_date"]:
                 return m["end_date"]
+        assert False
         return None
+
+    def get_council_end_date(self, date):
+        idx = bisect.bisect(self.council_order_dates, date)
+        return self.council_order_dates[idx] if idx < len(self.council_order_dates) else None
 
     def get_ministry(self, date):
         assert self.ministry_dict
@@ -328,9 +334,14 @@ class TenureBuilder:
                 officer_tenures.append(build_tenure(info, "", end_date, -1))
             postid_info_dict.clear()
 
+        # if officer_id == "Q7645718":
+        #     import pdb
+        #     pdb.set_trace()
+
         detail_infos = sorted(detail_infos, key=lambda i: (i.order_date, i.verb_code, i.order_id, i.post_id))
         self.lgr.info(f"\n## Processing Officer: {officer_id} #detailpost_infos: {len(detail_infos)}")
         self.lgr.info(f"\n\tOrders: {set(d.order_id for d in detail_infos)}")
+
 
         postid_info_dict, officer_tenures, prev_ministry = {}, [], None
         for order_id, order_infos in groupby(detail_infos, key=attrgetter("order_id")):
@@ -349,7 +360,15 @@ class TenureBuilder:
             self.lgr.warning(f"***No Closing Orders{get_postids(postid_info_dict.keys())}")
             if self.ministry_dict:
                 for post_id, info in postid_info_dict.items():
-                    end_date = self.ministry_end_date(info.order_date)
+                    max_order_date  = max(i.order_date for i in info.all_infos)
+                    council_end_date = self.get_council_end_date(max_order_date)
+                    ministry_end_date = self.ministry_end_date(info.order_date)
+
+                    if council_end_date and ministry_end_date:
+                        end_date = min(council_end_date, ministry_end_date)
+                    else:
+                        end_date = ministry_end_date
+
                     officer_tenures.append(build_tenure(info, "", end_date, -1))
 
         errors += [TenureLongError.build(t) for t in officer_tenures if t.duration_days > 365 * 6]
@@ -398,6 +417,29 @@ class TenureBuilder:
         tenure_output_path = Path("output/tenures.json")
         tenure_output_path.write_text(json.dumps({"tenures": tenure_dicts}, indent=2))
 
+    def find_overlapping_tenures(self, sorted_tenures, dt, start_idx):
+        s_idx, o_tenures = -1, []
+        for (idx, tenure) in enumerate(sorted_tenures[start_idx:]):
+            if dt in tenure:
+                if s_idx == -1:
+                    s_idx = idx + start_idx
+                o_tenures.append(tenure)
+        return s_idx, o_tenures
+
+    def check_duplicate_post_tenures(self, date_tenures):
+        def post_key(tenure):
+            return (tenure.post_id, tenure.role if tenure.role else '')
+
+        post_sorted_tenures = sorted(date_tenures, key=post_key)
+
+        duplicate_posts_tenures = []
+        for dup_post_key, duplicates in groupby(post_sorted_tenures, key=post_key):
+            duplicates = list(duplicates)
+            if len(duplicates) > 1 and dup_post_key[1] != 'Minister of State':
+                print(f'\n** Duplicates: {dup_post_key}')
+                [ print(t) for t in duplicates ]
+                duplicate_posts_tenures.append(duplicates)
+
     def pipe(self, docs, **kwargs):
         self.add_log_handler()
         print("Inside tenure_builder")
@@ -410,6 +452,9 @@ class TenureBuilder:
 
         orders = [doc.order for doc in docs]
         detail_infos = list(flatten(self.build_detail_infos(o) for o in orders))
+
+        self.council_order_dates = [o.date for o in orders if o.category == 'Council of Ministers']
+        self.council_order_dates.sort()
 
         detail_infos.sort(key=attrgetter("officer_id"))
         officer_groupby = groupby(detail_infos, key=attrgetter("officer_id"))
@@ -431,6 +476,19 @@ class TenureBuilder:
         for tenure in tenures:
             doc = order_id_doc_dict[tenure.start_order_id]
             doc.tenures.append(tenure)
+
+        # find multiple tenures on a single day
+        print('*** DUPLICATE POST TENURES ***')
+
+        sorted_tenures = sorted(tenures, key=attrgetter('start_date'))
+
+        all_dates = [t.start_date for t in tenures] + [t.end_date for t in tenures if t.end_date]
+        all_dates = sorted(set(d for d in all_dates))
+
+        start_idx = 0
+        for t_date in all_dates:
+            new_sidx, o_tenures = self.find_overlapping_tenures(sorted_tenures, t_date, start_idx)
+            duplicate_posts_tenures = self.check_duplicate_post_tenures(o_tenures)
 
         # self.write_tenures(tenures)
         self.lgr.info(f"=={doc.pdf_name}.tenure_builder {len(tenures)} {DataError.error_counts(errors)}")

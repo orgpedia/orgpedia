@@ -1,4 +1,5 @@
 import json  # noqa
+import os
 import shutil
 import subprocess
 import datetime
@@ -193,19 +194,19 @@ def readme_mah():
 
     f, l = first(documents_dict.values(), None), last(documents_dict.values(), None)
 
-    first_url, last_url = f'[{f["code"]}]({f["url"]})', f'[{l["code"]}]({l["url"]})'
+    first_url, last_url = f'[{f["code"]}.pdf]({f["url"]})', f'[{l["code"]}.pdf]({l["url"]})'
     first_date_str, last_date_str = date_str(f['date']), date_str(l['date'])
 
     insert_lines = ["## Data Details"]
-    insert_lines += [f"First Order: {first_url} - {first_date_str}"]
-    insert_lines += [f"Last Order: {last_url} - {last_date_str}"]
-    insert_lines += [f"Last Crawl Date: {l['crawl_dir']}"]
-    insert_lines += [f"Total Order: {len(documents_dict)}"]
+    insert_lines += [f"- **First Order:** {first_url} ({first_date_str})"]
+    insert_lines += [f"- **Last Order:** {last_url} ({last_date_str})"]
+    insert_lines += [f"- **Last Crawl Date:** {l['crawl_dir']}"]
+    insert_lines += [f"- **Total Orders:** {len(documents_dict)}"]
 
     # Identify the number of translated files
-    output_dir = repo_dir / Path('flow') / Path('writeTxt_') / Path('outupt')
+    output_dir = repo_dir / Path('flow') / Path('writeTxt_') / Path('output')
     en_files = output_dir.glob('*.en.txt')
-    insert_lines += [f"Total Translated Orders: {len(list(en_files))}"]
+    insert_lines += [f"- **Translated Orders:** {len(list(en_files))}"]
     insert_lines += ['']
 
     readme_file = repo_dir / "README.md"
@@ -219,6 +220,59 @@ def readme_mah():
         readme_lines = readme_lines[:ins_idx] + insert_lines + readme_lines[ins_idx:]
 
     readme_file.write_text("\n".join(readme_lines))
+
+@app.command()
+def export_mah():
+    repo_dir = get_repo_dir()
+    if not repo_dir:
+        print('Unable to locate the repo dir, quitting....')
+        typer.Abort()
+
+    documents_file = repo_dir / Path('import') / Path('documents') / 'documents.json'
+    if not documents_file.exists():
+        print('Unable to locate documents.json, quitting....')
+        typer.Abort()
+
+
+    org_code = repo_dir.name
+
+    documents_dict = json.loads(documents_file.read_text())
+    name_code_dict = dict((v['name'], v['code']) for v in documents_dict.values())
+
+
+    output_dir = repo_dir / Path('flow') / Path('writeTxt_') / Path('output')
+    output_en_files = [f for f in output_dir.glob('*.en.txt') if f.name.startswith(org_code)]
+    output_mr_files = [f for f in output_dir.glob('*.mr.txt') if f.name.startswith(org_code)]
+
+
+    export_dir = repo_dir / Path('export') / Path(f'orgpedia_{org_code}')
+    if export_dir.exists():
+        export_en_files = list(export_dir.glob('*.en.txt'))
+        export_mr_files = list(export_dir.glob('*.mr.txt'))
+
+        num_export_files = len(export_en_files) + len(export_mr_files)
+
+        if len(output_en_files) + len(output_mr_files) == num_export_files:
+            print('No new files to export')
+            return
+
+        shutil.rmtree(export_dir)
+
+    export_dir.mkdir(exist_ok=True)
+    os.chdir(export_dir)
+
+    for output_en_file in output_en_files:
+        code = name_code_dict[output_en_file.name.replace('.en.txt', '')]
+        export_en_file = export_dir / f'{code}.pdf.en.txt'
+        os.symlink(output_en_file, export_en_file.name)
+
+    for output_mr_file in output_mr_files:
+        code = name_code_dict[output_mr_file.name.replace('.mr.txt', '')]
+        export_mr_file = export_dir / f'{code}.pdf.mr.txt'
+        os.symlink(output_mr_file, export_mr_file.name)
+
+
+
 
 
 """

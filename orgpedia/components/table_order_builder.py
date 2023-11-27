@@ -365,7 +365,10 @@ class TableOrderBuidler:
         return d, all_errors
 
     def get_order_date(self, doc):
-        od_labels = doc.pages[0].word_labels.get("ORDERDATEPLACE", {})
+        if hasattr(doc.pages[0], 'word_labels'):
+            od_labels = doc.pages[0].word_labels.get("ORDERDATEPLACE", {})
+        else:
+            od_labels = []
         # import pdb
         # pdb.set_trace()
 
@@ -456,7 +459,7 @@ class TableOrderBuidler:
             if not line:
                 self.lgr.debug(f"{doc.pdf_name}: Line is empty ")
                 return 'Cabinet Minister'
-            elif 'cabin' in line or 'inet' in line or 'cablnet' in line:
+            elif ('cabin' in line or 'inet' in line or 'cablnet' in line) and 'ministersofstate' not in line:
                 return 'Cabinet Minister'
             elif 'depu' in line or 'uty' in line:
                 return 'Deputy Minister'

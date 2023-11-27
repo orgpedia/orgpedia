@@ -233,7 +233,13 @@ class OrderBuilder:
             return None
 
     def get_order_date(self, doc):
-        od_labels = doc.pages[0].word_labels.get("ORDERDATEPLACE", [])
+        if hasattr(doc.pages[0], 'word_labels'):
+            od_labels = doc.pages[0].word_labels.get("ORDERDATEPLACE", [])
+        else:
+            path = "pa0.word_labels.ORDERDATEPLACE"
+            msg = f"{doc.pdf_name} text: >NO TEXT<"
+            errors = [OrderDateNotFoundError(path=path, msg=msg, name='OrderDateNotFoundError')]
+            return None, errors
 
         page_idxs = od_labels['page_idx_']
         page_idx = page_idxs[0] if isinstance(page_idxs, list) else page_idxs

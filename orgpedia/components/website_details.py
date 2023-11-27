@@ -209,7 +209,7 @@ class WebsiteDetailGenerator:
         template = self.env.get_template("details.html")
         first_detail_pplns = detail_pplns_list[0]
         order_info.ppln_crumbs = [
-            (site_info.home, 'prime.html'),
+            (site_info.home, 'ministry.html'),
             (site_info.orders, f'orders-{order_info.get_ministry_years_str()}.html'),
             (order_info.order_id, f'order-{order_info.order_id}.html'),
             ('Detail-1', 'Detail-1'),
