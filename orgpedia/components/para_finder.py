@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from operator import attrgetter
 
 from docint.region import Region
 from docint.para import Para
@@ -15,8 +16,8 @@ def build_para(page, para_lines):
     word_idxs = [w.word_idx for w in words]
     word_lines_idxs = [[w.word_idx for w in ws] for ws in word_lines]
 
-    para_text = "".join(ln.text_with_break() for ln in para_lines)
-    print(f">{para_text.strip()}<")
+    # para_text = "".join(ln.text_with_break() for ln in para_lines)
+    # print(f">{para_text.strip()}<")
 
     return Para(
         words=words,
@@ -50,20 +51,20 @@ class ParaFinder:
             if not page.tables:
                 return False
 
-            if line.words[0].text == '|':
-                new_line = Region.from_words(line.words[1:])
-            else:
-                new_line = line
+            # if line.words[0].text == '|':
+            #     new_line = Region.from_words(line.words[1:])
+            # else:
+            new_line = line
 
-            return any(t.box.subsumes(new_line) for t in page.tables)
+            return any(t.box.y_subsumes(new_line) for t in page.tables)
 
         def in_table_idx(page, line):
-            if line.words[0].text == '|':
-                new_line = Region.from_words(line.words[1:])
-            else:
-                new_line = line
+            # if line.words[0].text == '|':
+            #     new_line = Region.from_words(line.words[1:])
+            # else:
+            new_line = line
 
-            return first((i for (i, t) in enumerate(page.tables) if t.box.subsumes(new_line)), None)
+            return first((i for (i, t) in enumerate(page.tables) if t.box.y_subsumes(new_line)), None)
 
         def is_center_aligned(line):
             padding = 0.1
@@ -92,11 +93,14 @@ class ParaFinder:
 
             last_line_ymax = 1.2 # keeping some bufffer
 
+            #page_lines = sorted(page.lines, key=attrgetter('ymin'))
+
             for (line_idx, line) in enumerate(page.lines):
                 #print(f'{line_idx}:', end=" ")
-                if not line:
+                if (not line) or (not line.arranged_text().strip()) or (line.arranged_text().strip() == "|"):
                     #print("empty line", end=" ")
                     if para_lines:
+                        #print("build_para", end=" ")
                         page.paras.append(build_para(page, para_lines))
                         para_lines.clear()
 
@@ -107,24 +111,25 @@ class ParaFinder:
                         para_lines.clear()
 
                     table_idx = in_table_idx(page, line)
-                    #print(f'[{line_idx}] ADDING: {table_idx}, {len(page.paras)}')
+                    #print(f'[{line_idx}] ADDING: table_idx: {table_idx}, {len(page.paras)} >{line.arranged_text()[:10]}...<', end=" ")
                     table_para_idxs_set.add((table_idx, len(page.paras)))
                 elif has_period(line) or is_center_aligned(line):
-                    #print("has period", end=" ")
+                    #print(f"has period|center_aligned >{line.arranged_text()[:15]}...<", end=" ")
                     para_lines.append(line)
                     page.paras.append(build_para(page, para_lines))
                     para_lines.clear()
 
                 elif is_last_line(line):
-                    #print(" ", end=" ")
+                    #print(" LAST LINE", end=" ")
                     last_line_seen = True
                     last_line_ymax = line.ymax
-                    if para_lines:
-                        page.paras.append(build_para(page, para_lines))
-                        para_lines.clear()
+                    para_lines.append(line)
+                    page.paras.append(build_para(page, para_lines))
+                    para_lines.clear()
+                    # IMP leave the loop
                     break
                 else:
-                    #print(f"adding to Para[{len(page.paras)}] {line.arranged_text()}", end=" ")
+                    #print(f"adding to Para[{len(page.paras)}] >{line.arranged_text()}<", end=" ")
                     para_lines.append(line)
 
                 #print()
@@ -139,7 +144,7 @@ class ParaFinder:
             page.table_para_idxs = sorted(table_para_idxs_set)
             assert len(page.tables) == len(
                 page.table_para_idxs
-            ), f"para {doc.pdf_name}:{page.page_idx} {len(page.tables)} <-> {page.table_para_idxs}"
+            ), f"para {doc.pdf_name}:Page_idx: {page.page_idx} {len(page.tables)} <-> {page.table_para_idxs}"
 
         if self.write_output:
             json_path = self.output_dir / f"{doc.pdf_name}.{self.stub}.json"

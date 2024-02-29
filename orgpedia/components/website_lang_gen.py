@@ -12,7 +12,6 @@ from operator import attrgetter, itemgetter
 from pathlib import Path
 
 import yaml
-from babel.dates import format_date
 from dateutil import parser
 from docint.vision import Vision
 from more_itertools import first, flatten
@@ -95,6 +94,7 @@ def format_lang_date(dt, lang, pattern_str):
         return TODATE_DICT[lang]
 
     loc_lang = 'kok' if lang == 'gom' else ('hi' if lang == 'sd' else lang)
+    from babel.dates import format_date
 
     dt_str = format_date(dt, format=pattern_str, locale=loc_lang)
     # digits are not translated by babel
@@ -209,7 +209,7 @@ class OfficerInfo:
     def __init__(self, yml_dict, officer_idx):
         assert officer_idx != 0
         self.officer_id = yml_dict["officer_id"]
-        self.image_url = yml_dict.get("image_url", "").replace('loksabhaph.nic.in', 'loksabha.nic.in')
+        self.image_url = yml_dict.get("image_url", "")
         self.full_name = yml_dict["full_name"]
         self.abbr_name = yml_dict.get("abbr_name", self.full_name)
         self._first_char = self.full_name[0] if self.full_name else 'E'
@@ -1179,6 +1179,7 @@ class WebsiteLanguageGenerator:
         return l
 
     def translate_months(self, lang):
+        from babel.dates import format_date
         def get_month(month_idx):
             dt = datetime.date(year=2022, month=month_idx, day=1)
             dt_str = format_date(dt, format='d MMMM YYYY', locale=loc_lang)
