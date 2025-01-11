@@ -86,7 +86,7 @@ DIGIT_LANG_DICT = {}
 TODATE_DICT = {}  # Ugliness
 
 RUN_START_DATE = datetime.date(year=1947, month=8, day=15)
-RUN_END_DATE = datetime.date(year=2023, month=8, day=23)
+RUN_END_DATE = datetime.date(year=2024, month=12, day=25)
 
 
 def format_lang_date(dt, lang, pattern_str):
