@@ -3,7 +3,7 @@ name = "orgpedia"
 version = "0.1.0"
 description = "Orgpedia: Information extraction & presentation for public good."
 authors = [{ name = "Orgpedia Foundation", email = "orgpedia.foundation@gmail.com" }]
-requires-python = ">3.8.1"
+requires-python = ">=3.10"
 readme = "README.md"
 license = "MIT"
 keywords = [
@@ -16,8 +16,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Natural Language :: English",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -109,14 +107,12 @@ exclude_lines = [
 legacy_tox_ini = """
 [tox]
 isolated_build = true
-envlist = py38, py39, py310, format, lint, build
+envlist = py310, format, lint, build
 
 [gh-actions]
 python =
     3.11: py311
     3.10: py310
-    3.9: py39
-    3.8: py38, format, lint, build
 
 
 [testenv]
