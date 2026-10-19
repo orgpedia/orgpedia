@@ -130,8 +130,9 @@ class MinistryInfo:
         self.name = yml_dict['name']
 
         e = yml_dict['end_date']
+        self.is_current = (e in ("today", "to_date"))
         self.start_date = parser.parse(yml_dict['start_date']).date()
-        self.end_date = parser.parse(e).date() if e != "today" else datetime.date.today()
+        self.end_date = parser.parse(e).date() if not self.is_current else datetime.date.today()
         self.prime_name = yml_dict['pm']
         self.pm_id = yml_dict['pm_officer_id']
         self.deputy_pms = yml_dict.get('deputy_pms', [])
@@ -152,7 +153,7 @@ class MinistryInfo:
     @property
     def period_str(self):
         s_date_str = format_lang_date(self.start_date, self.lang, 'd MMMM YYYY')
-        e_date_str = format_lang_date(self.end_date, self.lang, 'd MMMM YYYY')
+        e_date_str = format_lang_date("to_date" if self.is_current else self.end_date, self.lang, 'd MMMM YYYY')
         return f'{s_date_str} - {e_date_str}'
 
     def has_date(self, dt):
@@ -739,12 +740,17 @@ class CabinetInfo:
     @property
     def period_str(self):
         s_y, s_m, s_d = self.ministry_date_idxs[0]
-        e_y, e_m, e_d = self.ministry_date_idxs[1]
+        e_date = self.ministry_date_idxs[1]
 
         ss_y = ''.join(self.idx2str['digits'][int(c)] for c in str(s_y))
         ss_d = ''.join(self.idx2str['digits'][int(c)] for c in str(s_d))
         ss_m = self.idx2str['months'][s_m]
 
+        if not e_date:
+            to_date_str = self.idx2str.get('to_date', 'To Date')
+            return f'{ss_d} {ss_m} {ss_y} - {to_date_str}'
+
+        e_y, e_m, e_d = e_date
         se_y = ''.join(self.idx2str['digits'][int(c)] for c in str(e_y))
         se_d = ''.join(self.idx2str['digits'][int(c)] for c in str(e_d))
         se_m = self.idx2str['months'][e_m]
@@ -1202,6 +1208,7 @@ class WebsiteLanguageGenerator:
         l_idx2str['mini'] = [self.translate_ministry(m, lang) for m in idx2str['mini']]
         l_idx2str['digits'] = [self.translations['digits'][c][lang] for c in idx2str['digits']]
         l_idx2str['months'] = self.translate_months(lang)
+        l_idx2str['to_date'] = TODATE_DICT[lang]
         return l_idx2str
 
     def build_lang_label_infos(self, labels_trans_dict):
@@ -1397,7 +1404,10 @@ class WebsiteLanguageGenerator:
         ministry = self.get_ministry(date)
         ministry_idx = [idx for (idx, m) in enumerate(self.ministry_infos) if m.name == ministry.name][0]
         m_s, m_e = (ministry.start_date, ministry.end_date)
-        ministry_date_idxs = [[m_s.year, m_s.month, m_s.day], [m_e.year, m_e.month, m_e.day]]
+        if getattr(ministry, 'is_current', False):
+            ministry_date_idxs = [[m_s.year, m_s.month, m_s.day], []]
+        else:
+            ministry_date_idxs = [[m_s.year, m_s.month, m_s.day], [m_e.year, m_e.month, m_e.day]]
 
         [offi_dict, dept_dict, role_dict, mini_dict] = str2idx
 
@@ -1486,6 +1496,7 @@ class WebsiteLanguageGenerator:
         idx2str['mini'] = [m.name for m in self.ministry_infos]
         idx2str['months'] = list(calendar.month_name)
         idx2str['digits'] = list(string.digits)
+        idx2str['to_date'] = 'To Date'
 
         start_dates = [t.start_date for t in tenures]
         end_dates = [t.end_date for t in tenures if t.end_date]
